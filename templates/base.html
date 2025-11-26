@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>{{ title or "Controle de Notebooks - DGOVI Suporte" }}</title>
+
+  <!-- Fonte mais moderna -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="{{ body_class|default('') }}">
+<header>
+  <div class="header-inner">
+    <div class="logo">
+      <!-- Logo horizontal -->
+      <img
+        src="{{ url_for('static', filename='img/logo-rio-saude-horizontal.png') }}"
+        alt="Prefeitura do Rio - Saúde"
+        class="logo-img"
+      />
+      <span class="logo-system-name">Controle de Notebooks - Service Desk</span>
+    </div>
+<nav>
+  <a href="{{ url_for('dashboard') }}">Dashboard</a>
+  <a href="{{ url_for('emprestimo') }}">Novo Empréstimo</a>
+  <a href="{{ url_for('relatorio_emprestimo')}}">Relatórios</a>
+  <a href="{{ url_for('agendamentos') }}" class="nav-highlight">Agendamentos</a>
+</nav>
+
+  </div>
+</header>
+
+  <main>
+    <div class="container">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="messages">
+            {% for category, msg in messages %}
+              <div class="msg {{ category }}">{{ msg }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <footer>
+    <small>DGOVI - Suporte em TI &mdash; Controle de Empréstimos</small>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Termo de Responsabilidade</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body {
+      background: #ffffff;
+      color: #111827;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .print-container {
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 24px;
+      background: #ffffff;
+    }
+    .termo-titulo { text-align: center; margin-bottom: 16px; }
+    .termo-titulo h1 { font-size: 18px; margin: 8px 0 0 0; }
+    .termo-corpo { font-size: 14px; line-height: 1.5; text-align: justify; }
+    .termo-dados { margin-top: 16px; font-size: 14px; }
+    .assinaturas { margin-top: 48px; font-size: 14px; text-align: center; }
+    .assinaturas p { margin-top: 40px; }
+    .no-print { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
+    @media print {
+      .no-print { display: none; }
+      body { background: #ffffff; }
+    }
+  </style>
+  <script>
+    // Assim que a página carregar, abre o diálogo de impressão do navegador
+    window.addEventListener('load', function () {
+      window.print();
+    });
+  </script>
+</head>
+<body>
+  <div class="print-container">
+    <div class="no-print">
+      Esta página é própria para impressão. Se o diálogo não aparecer, use Ctrl+P.
+    </div>
+
+    <div class="termo-titulo">
+      <h1>TERMO DE RESPONSABILIDADE PELA GUARDA E USO DE EQUIPAMENTOS</h1>
+    </div>
+
+    <div class="termo-corpo">
+      <!-- Aqui você pode colar o texto do termo oficial, adaptando se quiser -->
+      <p>
+        Declaro, para os devidos fins, que recebi da unidade de saúde da Prefeitura
+        do Rio de Janeiro o equipamento abaixo descrito, comprometendo-me a zelar
+        pela sua guarda e bom uso, bem como devolvê-lo em perfeitas condições de
+        funcionamento, salvo desgaste natural decorrente do uso adequado.
+      </p>
+    </div>
+
+    <div class="termo-dados">
+      <p><strong>Colaborador:</strong> {{ emprestimo.colaborador_nome }}</p>
+      <p><strong>Setor:</strong> {{ emprestimo.colaborador_setor or "-" }}</p>
+      <p><strong>Notebook (Nº de série):</strong> {{ emprestimo.serial }}</p>
+      <p><strong>Modelo:</strong> {{ emprestimo.modelo or "-" }}</p>
+      <p><strong>Data/Hora do Empréstimo:</strong> {{ data_br }}</p>
+    </div>
+
+    <div class="assinaturas">
+      <p>
+        _________________________________________________<br>
+        Assinatura do colaborador
+      </p>
+
+      <p>
+        _________________________________________________<br>
+        Assinatura do responsável
+      </p>
+    </div>
+  </div>
+</body>
+</html>

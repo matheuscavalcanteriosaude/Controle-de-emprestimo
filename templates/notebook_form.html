@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Cadastro de Notebooks</h2>
+
+<div class="form-layout">
+  <form method="post" class="form-card">
+    <div class="form-header">
+      <p>Cadastrar novos equipamentos para o estoque.</p>
+    </div>
+
+    <label for="serial">Nº de Série</label>
+    <input type="text" id="serial" name="serial" required />
+
+    <label for="modelo">Modelo (opcional)</label>
+    <input type="text" id="modelo" name="modelo" />
+
+    <button type="submit" class="btn-primary">Salvar</button>
+  </form>
+
+  <div class="form-side-info">
+    <div class="info-card">
+      <h3>Orientações</h3>
+      <ul>
+        <li>O número de série não pode se repetir.</li>
+        <li>A exclusão marca o notebook como <strong>inativo</strong>, mantendo o histórico.</li>
+        <li>Não é possível remover notebooks com empréstimo ativo.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section-header">
+  <h3>Lista de notebooks</h3>
+</div>
+
+<div class="table-card">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Nº Série</th>
+          <th>Modelo</th>
+          <th>Status</th>
+          <th class="th-acoes">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if notebooks %}
+          {% for nb in notebooks %}
+            <tr>
+              <td>{{ nb.serial }}</td>
+              <td>{{ nb.modelo or "-" }}</td>
+              <td>{{ nb.status }}</td>
+              <td class="td-acoes">
+                {% if nb.status == 'ativo' %}
+                  <form method="post" action="{{ url_for('remover_notebook', notebook_id=nb.id) }}" onsubmit="return confirm('Confirmar remoção deste notebook?');">
+                    <button type="submit" class="btn-small btn-danger">Remover</button>
+                  </form>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="4">Nenhum notebook cadastrado.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

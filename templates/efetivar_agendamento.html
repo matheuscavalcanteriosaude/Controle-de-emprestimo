@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Efetivar empréstimo a partir do agendamento</h2>
+
+<div class="form-card">
+  <div class="form-header">
+    <p>
+      Agendamento de
+      <strong>{{ agendamento.colaborador_nome }}</strong>
+      {% if agendamento.colaborador_setor %}
+        — {{ agendamento.colaborador_setor }}
+      {% endif %}
+    </p>
+    <p>
+      Período:
+      <strong>{{ agendamento.data_inicio_br }}</strong>
+      &rarr;
+      <strong>{{ agendamento.data_fim_br }}</strong>
+    </p>
+    <p>
+      Equipamento de som:
+      {% if agendamento.inclui_som %}
+        <span class="badge-som">Com som</span>
+      {% else %}
+        <span class="badge-som badge-som-off">Sem som</span>
+      {% endif %}
+    </p>
+  </div>
+
+  <form method="post">
+    <label for="notebook_id">Selecione o notebook para emprestar</label>
+    <select id="notebook_id" name="notebook_id" required>
+      <option value="">Selecione...</option>
+      {% for nb in notebooks_disponiveis %}
+        <option value="{{ nb.id }}">
+          {{ nb.serial }}{% if nb.modelo %} - {{ nb.modelo }}{% endif %}
+        </option>
+      {% endfor %}
+    </select>
+
+    <div style="margin-top: 12px;">
+      <button type="submit" class="btn-primary">Confirmar empréstimo</button>
+      <a href="{{ url_for('agendamentos') }}" class="btn-secondary">Voltar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

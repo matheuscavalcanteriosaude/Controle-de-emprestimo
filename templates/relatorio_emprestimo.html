@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Relatório de Empréstimos</h2>
+
+<form method="get" class="filter-form">
+  <div class="form-grid">
+    <div>
+      <label for="status">Status</label>
+      <select id="status" name="status">
+        <option value="todos" {% if status == "todos" %}selected{% endif %}>Todos</option>
+        <option value="emprestado" {% if status == "emprestado" %}selected{% endif %}>Emprestado</option>
+        <option value="devolvido" {% if status == "devolvido" %}selected{% endif %}>Devolvido</option>
+      </select>
+    </div>
+
+    <div>
+      <label for="setor">Setor (contém)</label>
+      <input type="text" id="setor" name="setor" value="{{ setor }}">
+    </div>
+
+    <div>
+      <label for="data_inicio">Data início (empréstimo)</label>
+      <input type="date" id="data_inicio" name="data_inicio" value="{{ data_inicio }}">
+    </div>
+
+    <div>
+      <label for="data_fim">Data fim (empréstimo)</label>
+      <input type="date" id="data_fim" name="data_fim" value="{{ data_fim }}">
+    </div>
+  </div>
+
+  <div style="margin-top: 10px;">
+    <button type="submit" class="btn-primary">Filtrar</button>
+    <a
+      href="{{ url_for('relatorio_emprestimo',
+                       status=status,
+                       setor=setor,
+                       data_inicio=data_inicio,
+                       data_fim=data_fim,
+                       export='csv') }}"
+      class="btn-secondary"
+    >
+      Exportar CSV
+    </a>
+  </div>
+</form>
+
+<div class="section-header" style="margin-top: 18px;">
+  <h3>Resultado</h3>
+  <span class="section-subtitle">
+    {{ rows|length }} registro(s) encontrado(s)
+  </span>
+</div>
+
+<div class="table-card">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nº Série</th>
+          <th>Modelo</th>
+          <th>Colaborador</th>
+          <th>Setor</th>
+          <th>Empréstimo</th>
+          <th>Devolução</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if rows %}
+          {% for r in rows %}
+            <tr>
+              <td>{{ r.id }}</td>
+              <td>{{ r.serial }}</td>
+              <td>{{ r.modelo or "-" }}</td>
+              <td>{{ r.colaborador_nome }}</td>
+              <td>{{ r.colaborador_setor or "-" }}</td>
+              <td>{{ r.data_hora_emprestimo }}</td>
+              <td>{{ r.data_hora_devolucao or "-" }}</td>
+              <td>{{ r.status }}</td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="8">Nenhum empréstimo encontrado com os filtros atuais.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

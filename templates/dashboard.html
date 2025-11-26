@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+  <!-- Atualiza a página a cada 60 segundos -->
+  <meta http-equiv="refresh" content="30">
+{% endblock %}
+
+{% block content %}
+<h2>Dashboard</h2>
+
+<div class="cards">
+  <div class="card">
+    <span class="card-label">Total de Notebooks</span>
+    <span class="card-value">{{ total_notebooks }}</span>
+  </div>
+  <div class="card">
+    <span class="card-label">Emprestados</span>
+    <span class="card-value">{{ total_emprestados }}</span>
+  </div>
+  <div class="card">
+    <span class="card-label">Disponíveis</span>
+    <span class="card-value">{{ disponiveis }}</span>
+  </div>
+</div>
+
+<div class="section-header">
+  <h3>Empréstimos Ativos</h3>
+  <span class="section-subtitle">Limite diário de devolução até 18h</span>
+</div>
+
+<div class="table-card">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Nº Série</th>
+          <th>Modelo</th>
+          <th>Colaborador</th>
+          <th>Setor</th>
+          <th>Data/Hora Empréstimo</th>
+          <th>Limite (18h)</th>
+          <th class="th-acoes">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if emprestimos_ativos %}
+          {% for e in emprestimos_ativos %}
+            <tr>
+              <td>{{ e.serial }}</td>
+              <td>{{ e.modelo or "-" }}</td>
+              <td>{{ e.colaborador_nome }}</td>
+              <td>{{ e.colaborador_setor or "-" }}</td>
+              <td>{{ e.data_hora_emprestimo }}</td>
+              <td>
+                <span class="deadline-badge {{ e.nivel_limite }}">
+                  {{ e.tempo_limite }}
+                </span>
+              </td>
+              <td class="td-acoes">
+                <a href="{{ url_for('devolver', loan_id=e.id) }}" class="btn-small">Devolver</a>
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="7">Nenhum notebook emprestado no momento.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section-header">
+  <h3>Histórico recente (últimos 10 lançamentos)</h3>
+</div>
+
+<div class="table-card">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Nº Série</th>
+          <th>Modelo</th>
+          <th>Colaborador</th>
+          <th>Setor</th>
+          <th>Empréstimo</th>
+          <th>Devolução</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in historico %}
+          <tr>
+            <td>{{ h.serial }}</td>
+            <td>{{ h.modelo or "-" }}</td>
+            <td>{{ h.colaborador_nome }}</td>
+            <td>{{ h.colaborador_setor or "-" }}</td>
+            <td>{{ h.data_hora_emprestimo }}</td>
+            <td>{{ h.data_hora_devolucao or "-" }}</td>
+            <td>{{ h.status }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section-header">
+  <h3>Próximos agendamentos</h3>
+</div>
+
+<div class="table-card">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Modelo</th>
+          <th>Colaborador</th>
+          <th>Setor</th>
+          <th>Início</th>
+          <th>Fim</th>
+          <th>Som</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if proximos_agendamentos %}
+          {% for a in proximos_agendamentos %}
+            <tr class="{% if a.eh_hoje %}row-hoje{% endif %}">
+              <td>{{ a.modelo or "-" }}</td>
+              <td>{{ a.colaborador_nome }}</td>
+              <td>{{ a.colaborador_setor or "-" }}</td>
+              <td>{{ a.data_inicio_br }}</td>
+              <td>{{ a.data_fim_br }}</td>
+              <td>
+                {% if a.inclui_som %}
+                  <span class="badge-som">Com som</span>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="7">Nenhum agendamento futuro cadastrado.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

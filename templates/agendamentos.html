@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Agendamentos de Notebooks</h2>
+
+<div class="form-layout">
+  <form method="post" class="form-card">
+    <div class="form-header">
+      <p>Crie um agendamento futuro para uso do notebook e, se necessário, do equipamento de som.</p>
+    </div>
+
+    <label for="colaborador_nome">Nome do colaborador</label>
+    <input type="text" id="colaborador_nome" name="colaborador_nome" required />
+
+    <label for="colaborador_setor">Setor do colaborador</label>
+    <select id="colaborador_setor" name="colaborador_setor">
+      <option value="">Selecione...</option>
+      <option>Comunicação</option>
+      <option>DAF - Assessoria</option>
+      <option>DAF - CACC</option>
+      <option>DAF - CTPF</option>
+      <option>DGOVI</option>
+      <option>DGP</option>
+      <option>DJUR</option>
+      <option>DOP</option>
+      <option>Integridade (NIN)</option>
+      <option>Manutenção</option>
+      <option>NAE</option>
+      <option>Ouvidoria</option>
+      <option>Presidência</option>
+    </select>
+
+    <label for="data_inicio">Início</label>
+    <input type="datetime-local" id="data_inicio" name="data_inicio" required />
+
+    <label for="data_fim">Fim</label>
+    <input type="datetime-local" id="data_fim" name="data_fim" required />
+
+    <label class="checkbox-inline">
+      <input type="checkbox" id="inclui_som" name="inclui_som" />
+      Solicitar também equipamento de som
+    </label>
+
+    <button type="submit" class="btn-primary">Criar agendamento</button>
+  </form>
+
+  <div class="form-side-info">
+    <div class="info-card">
+      <h3>Regras de agendamento</h3>
+      <ul>
+        <li>O sistema reserva notebooks automaticamente, respeitando a capacidade disponível.</li>
+        <li>Use o Dashboard para acompanhar empréstimos ativos no dia.</li>
+        <li>Agendamentos podem ser cancelados se não forem mais necessários.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section-header">
+  <h3>Próximos agendamentos</h3>
+</div>
+
+{% if proximos_agendamentos %}
+  <div class="ag-grid">
+    {% for a in proximos_agendamentos %}
+      <div class="ag-card {% if a.eh_hoje %}ag-hoje{% endif %}">
+        <div class="ag-card-header">
+          <span class="ag-horario">
+            {{ a.data_inicio_br }} &rarr; {{ a.data_fim_br }}
+          </span>
+          {% if a.eh_hoje %}
+            <span class="badge-hoje">Hoje</span>
+          {% endif %}
+        </div>
+
+        {# Linha do notebook oculta / genérica #}
+        <p class="ag-equip">
+          Notebook reservado
+        </p>
+
+        <p class="ag-colab">
+          {{ a.colaborador_nome }}
+          {% if a.colaborador_setor %}
+            &mdash; {{ a.colaborador_setor }}
+          {% endif %}
+        </p>
+
+        <p class="ag-extra">
+          {% if a.inclui_som %}
+            <span class="badge-som">Com som</span>
+          {% else %}
+            <span class="badge-som badge-som-off">Sem som</span>
+          {% endif %}
+        </p>
+
+        <div class="ag-actions">
+          <a href="{{ url_for('emprestar_agendamento', schedule_id=a.id) }}" class="btn-small">
+            Efetivar empréstimo
+          </a>
+          <a href="{{ url_for('cancelar_agendamento', schedule_id=a.id) }}" class="btn-small btn-danger">
+            Cancelar
+          </a>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="table-card">
+    <div class="table-wrapper">
+      <table>
+        <tbody>
+          <tr>
+            <td>Nenhum agendamento futuro cadastrado.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}
