@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block extra_head %}
-  <!-- Atualiza a página a cada 60 segundos -->
+  <!-- Atualiza a página a cada 30 segundos -->
   <meta http-equiv="refresh" content="30">
 {% endblock %}
 
@@ -20,6 +20,10 @@
   <div class="card">
     <span class="card-label">Disponíveis</span>
     <span class="card-value">{{ disponiveis }}</span>
+  </div>
+  <div class="card">
+    <span class="card-label">Chamados em aberto</span>
+    <span class="card-value">{{ total_chamados_abertos }}</span>
   </div>
 </div>
 
@@ -148,6 +152,51 @@
         {% endif %}
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- Chamados em aberto -->
+<div class="section-header">
+  <h3>Chamados em aberto</h3>
+</div>
+
+<div class="table-card">
+  <div class="table-wrapper">
+    {% if chamados_abertos %}
+      <table>
+        <thead>
+          <tr>
+            <th>Equipamento / Nº de série</th>
+            <th>Empresa</th>
+            <th>Data de abertura</th>
+            <th>Dias em aberto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in chamados_abertos %}
+            <tr>
+              <td>
+                {{ c.tipo_equipamento }}
+                {% if c.numero_serie %}
+                  — {{ c.numero_serie }}
+                {% endif %}
+              </td>
+              <td>{{ c.empresa }}</td>
+              <td>{{ c.data_abertura_br }}</td>
+              <td>{{ c.dias_aberto }} dia{% if c.dias_aberto != 1 %}s{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <table>
+        <tbody>
+          <tr>
+            <td>Nenhum chamado em aberto no momento.</td>
+          </tr>
+        </tbody>
+      </table>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

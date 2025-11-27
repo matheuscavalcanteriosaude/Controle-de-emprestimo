@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Novo chamado{% endblock %}
+
+{% block content %}
+<h2>Abertura de chamado</h2>
+<p style="font-size: 13px; color:#6b7280;">
+  Registre os dados do equipamento e o defeito apresentado.
+</p>
+
+<form method="post" class="form-card">
+  <div class="form-layout">
+    <div>
+      <h3>Equipamento</h3>
+
+      <label for="tipo_equipamento">Tipo de equipamento</label>
+      <select id="tipo_equipamento" name="tipo_equipamento" required>
+        <option value="">Selecione...</option>
+        {% for t in tipos %}
+          <option value="{{ t }}">{{ t }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="empresa">Empresa</label>
+      <select id="empresa" name="empresa">
+        <option value="">Selecione...</option>
+        {% for e in empresas %}
+          <option value="{{ e }}">{{ e }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="marca">Marca</label>
+      <select id="marca" name="marca">
+        <option value="">Selecione...</option>
+        {% for m in marcas %}
+          <option value="{{ m }}">{{ m }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="modelo">Modelo</label>
+      <input type="text" id="modelo" name="modelo">
+
+      <label for="numero_serie">Número de série</label>
+      <input type="text" id="numero_serie" name="numero_serie" required>
+
+      <label for="defeito">Defeito apresentado</label>
+      <textarea id="defeito" name="defeito" rows="4" style="width:100%; border-radius:8px; border:1px solid #d1d5db;" required></textarea>
+    </div>
+
+        
+    <div>      
+      <h3>Outras informações</h3>
+      <textarea id="observacoes" name="observacoes" rows="8" style="width:80%; border-radius:8px; border:1px solid #d1d5db;"></textarea>
+    </div>
+  </div>
+
+  <div style="margin-top: 20px;">
+    <button type="submit" class="btn-primary">Abrir chamado</button>
+    <a href="{{ url_for('lista_chamados') }}" class="btn-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

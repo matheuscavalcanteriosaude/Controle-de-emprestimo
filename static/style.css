@@ -68,8 +68,8 @@ nav a {
 }
 
 .nav-highlight {
-  border-color: #4f46e5;
-  background: #4f46e5;
+  border-color: #001bb1;
+  background: #001bb1;
   color: #e5e7eb;
 }
 
@@ -623,4 +623,56 @@ tbody tr:hover {
 .badge-amanha {
   background: #3b82f6;
   color: #ffffff;
+}
+
+/* Layout do modo TV: coluna esquerda (empréstimos + chamados) e direita (agendamentos) */
+.tv-layout-main {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  margin-top: 16px;
+}
+
+.tv-col-left,
+.tv-col-right {
+  flex: 1;
+}
+
+/* Dá um respiro entre os cards dentro da coluna esquerda */
+.tv-col-left > div + div {
+  margin-top: 8px;
+}
+
+/* Cards de KPI no modo TV (Topo) */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.kpi-card {
+  background: #ffffff;
+  border-radius: 15px;
+  padding: 1px 24px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.kpi-label {
+  font-size: 0.9rem;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.kpi-value {
+  font-size: 2rem;
+  font-weight: 450;
+  color: #111827;
+}
+
+.kpi-card-warning {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
 }

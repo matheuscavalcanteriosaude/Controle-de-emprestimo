@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>{{ title or "Controle de Notebooks - DGOVI Suporte" }}</title>
+  <title>{{ title or "Controle de Atividades - Service Desk" }}</title>
 
   <!-- Fonte mais moderna -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -23,13 +23,14 @@
         alt="Prefeitura do Rio - Saúde"
         class="logo-img"
       />
-      <span class="logo-system-name">Controle de Notebooks - Service Desk</span>
+      <span class="logo-system-name">Controle de Atividades - Service Desk</span>
     </div>
 <nav>
   <a href="{{ url_for('dashboard') }}">Dashboard</a>
   <a href="{{ url_for('emprestimo') }}">Novo Empréstimo</a>
-  <a href="{{ url_for('relatorio_emprestimo')}}">Relatórios</a>
-  <a href="{{ url_for('agendamentos') }}" class="nav-highlight">Agendamentos</a>
+  <a href="{{ url_for('lista_chamados') }}">Chamados</a>
+  <a href="{{ url_for('agendamentos') }}">Agendamentos</a>
+  <a href="{{ url_for('relatorio_emprestimo')}}"class="nav-highlight">Relatórios</a>
 </nav>
 
   </div>

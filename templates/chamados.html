@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Chamados{% endblock %}
+
+{% block content %}
+<div class="section-header">
+  <h2>Chamados de manutenção</h2>
+  <div>
+    <a href="{{ url_for('novo_chamado') }}" class="btn-primary">Novo chamado</a>
+  </div>
+</div>
+
+<div style="margin-bottom: 10px; font-size: 13px;">
+  Filtro:
+  <a href="{{ url_for('lista_chamados', status='aberto') }}"
+     {% if filtro_status == 'aberto' %}style="font-weight:600;"{% endif %}>
+    Abertos
+  </a> ·
+  <a href="{{ url_for('lista_chamados', status='fechado') }}"
+     {% if filtro_status == 'fechado' %}style="font-weight:600;"{% endif %}>
+    Fechados
+  </a> ·
+  <a href="{{ url_for('lista_chamados', status='todos') }}"
+     {% if filtro_status == 'todos' %}style="font-weight:600;"{% endif %}>
+    Todos
+  </a>
+</div>
+
+<div class="table-card">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Data abertura</th>
+          <th>Equipamento / Marca</th>
+          <th>Nº Série</th>
+          <th>Empresa</th>
+          <th>Defeito</th>
+          <th>Dias em aberto</th>
+          <th>Status</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in chamados %}
+          <tr>
+            <td>#{{ c.id }}</td>
+            <td>{{ c.data_abertura_br }}</td>
+            <td>
+              {{ c.tipo_equipamento or '-' }}
+              {% if c.marca %}
+                <br><span class="tv-sub">{{ c.marca }}</span>
+              {% endif %}
+            </td>
+            <td>{{ c.numero_serie or '-' }}</td>
+            <td>{{ c.empresa or '-' }}</td>
+            <td style="max-width: 260px;">{{ c.defeito or '-' }}</td>
+            <td style="text-align:center;">
+              {% if c.status == 'aberto' %}
+                {{ c.dias_aberto }} dia{% if c.dias_aberto != 1 %}s{% endif %}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td>{{ c.status }}</td>
+            <td>
+              {% if c.status == 'aberto' %}
+                <form method="post"
+                      action="{{ url_for('fechar_chamado', ticket_id=c.id) }}"
+                      onsubmit="return confirm('Encerrar este chamado?');">
+                  <button type="submit" class="btn-small btn-danger">Fechar</button>
+                </form>
+              {% else %}
+                <span class="tv-sub">Fechado</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+
+        {% if chamados|length == 0 %}
+          <tr>
+            <td colspan="9">Nenhum chamado encontrado para este filtro.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -5,7 +5,7 @@ import shutil
 import os
 import re
 from io import StringIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from docxtpl import DocxTemplate
 from flask import (
     Flask,
@@ -20,11 +20,38 @@ from flask import (
 
 )
 
+# - Constantes
+
 APP_DB = "notebooks.db"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TERMOS_DIR = os.path.join(BASE_DIR, "termos")
 TERMOS_GERADOS_DIR = os.path.join(BASE_DIR, "termos_gerados")
 os.makedirs(TERMOS_GERADOS_DIR, exist_ok=True)
+
+TIPO_EQUIPAMENTOS = [
+    "Computador",
+    "Monitor",
+    "Televisão",
+    "Impressora",
+]
+
+EMPRESAS_CHAMADO = [
+    "Simpress",
+    "Kaique",
+    "Positivo",
+    "Multi",
+    "HP",
+]
+
+MARCAS_EQUIP = [
+    "HP",
+    "Positivo",
+    "3Green",
+    "Multi",
+]
+
+
+# - Gerador de termos
 
 def find_soffice():
     candidatos = [
@@ -215,6 +242,33 @@ def init_db():
         """
     )
 
+    # Tabela de Tickets
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data_abertura TEXT NOT NULL,
+            data_encerramento TEXT,
+            status TEXT NOT NULL, -- 'aberto' ou 'fechado'
+
+            tipo_equipamento TEXT,
+            empresa TEXT,
+            marca TEXT,
+            modelo TEXT,
+            numero_serie TEXT,
+            defeito TEXT,
+
+            endereco TEXT,
+            cep TEXT,
+            telefone TEXT,
+            contatos TEXT,
+            email TEXT,
+
+            observacoes TEXT
+        );
+        """
+    )
+
     conn.commit()
     conn.close()
 
@@ -255,6 +309,140 @@ def calcular_tempo_limite(data_hora_emprestimo_str: str):
     return texto, nivel
 
 # ------------------------ ROTAS ----------------------------- #
+
+@app.route("/chamados/novo", methods=["GET", "POST"])
+def novo_chamado():
+    if request.method == "POST":
+        form = request.form
+
+        data_abertura = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        tipo_equipamento = form.get("tipo_equipamento", "").strip()
+        empresa = form.get("empresa", "").strip()
+        marca = form.get("marca", "").strip()
+        modelo = form.get("modelo", "").strip()
+        numero_serie = form.get("numero_serie", "").strip()
+        defeito = form.get("defeito", "").strip()
+
+        endereco = form.get("endereco", "").strip()
+        cep = form.get("cep", "").strip()
+        telefone = form.get("telefone", "").strip()
+        contatos = form.get("contatos", "").strip()
+        email = form.get("email", "").strip()
+        observacoes = form.get("observacoes", "").strip()
+
+        # validação mínima
+        if not tipo_equipamento or not numero_serie or not defeito:
+            flash("Informe tipo de equipamento, número de série e defeito apresentado.", "error")
+            return render_template(
+                "chamado_form.html",
+                tipos=TIPO_EQUIPAMENTOS,
+                empresas=EMPRESAS_CHAMADO,
+                marcas=MARCAS_EQUIP,
+            )
+
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO tickets (
+                data_abertura,
+                status,
+                tipo_equipamento,
+                empresa,
+                marca,
+                modelo,
+                numero_serie,
+                defeito,
+                endereco,
+                cep,
+                telefone,
+                contatos,
+                email,
+                observacoes
+            )
+            VALUES (?, 'aberto', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data_abertura,
+                tipo_equipamento,
+                empresa,
+                marca,
+                modelo,
+                numero_serie,
+                defeito,
+                endereco,
+                cep,
+                telefone,
+                contatos,
+                email,
+                observacoes,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        flash("Chamado aberto com sucesso.", "success")
+        return redirect(url_for("lista_chamados"))
+
+    # GET
+    return render_template(
+        "chamado_form.html",
+        tipos=TIPO_EQUIPAMENTOS,
+        empresas=EMPRESAS_CHAMADO,
+        marcas=MARCAS_EQUIP,
+    )
+
+@app.route("/chamados")
+def lista_chamados():
+    status = request.args.get("status", "aberto")  # padrão: abertos
+
+    conn = get_connection()
+    cur = conn.cursor()
+    if status == "todos":
+        cur.execute("SELECT * FROM tickets ORDER BY data_abertura DESC")
+    else:
+        cur.execute(
+            "SELECT * FROM tickets WHERE status = ? ORDER BY data_abertura DESC",
+            (status,),
+        )
+    rows = cur.fetchall()
+    conn.close()
+
+    hoje = date.today()
+    chamados = []
+    for r in rows:
+        d = dict(r)
+        dt_ab = datetime.strptime(d["data_abertura"], "%Y-%m-%d %H:%M:%S")
+        d["data_abertura_br"] = dt_ab.strftime("%d/%m/%Y %H:%M")
+        d["dias_aberto"] = (hoje - dt_ab.date()).days
+        chamados.append(d)
+
+    return render_template(
+        "chamados.html",
+        chamados=chamados,
+        filtro_status=status,
+    )
+
+@app.route("/chamados/fechar/<int:ticket_id>", methods=["POST"])
+def fechar_chamado(ticket_id):
+    conn = get_connection()
+    cur = conn.cursor()
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute(
+        """
+        UPDATE tickets
+        SET status = 'fechado', data_encerramento = ?
+        WHERE id = ?
+        """,
+        (agora, ticket_id),
+    )
+    conn.commit()
+    conn.close()
+
+    flash("Chamado encerrado com sucesso.", "success")
+    return redirect(url_for("lista_chamados"))
+
 
 @app.route("/termo/<int:loan_id>")
 def termo_opcoes(loan_id):
@@ -847,11 +1035,11 @@ def dashboard():
     conn = get_connection()
     cur = conn.cursor()
 
-    # Total de notebooks ativos (estoque)
+    # --- Total de notebooks ativos (estoque) ---
     cur.execute("SELECT COUNT(*) AS total FROM notebooks WHERE status = 'ativo'")
     total_notebooks = cur.fetchone()["total"]
 
-    # Empréstimos ativos
+    # --- Empréstimos ativos ---
     cur.execute(
         """
         SELECT
@@ -880,7 +1068,7 @@ def dashboard():
     total_emprestados = len(emprestimos_ativos)
     disponiveis = total_notebooks - total_emprestados
 
-    # Histórico recente (últimos 10)
+    # --- Histórico recente (últimos 10) ---
     cur.execute(
         """
         SELECT
@@ -900,7 +1088,7 @@ def dashboard():
     )
     historico = cur.fetchall()
 
-    # Próximos agendamentos (para o dashboard)
+    # --- Próximos agendamentos (para o dashboard) ---
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cur.execute(
         """
@@ -922,9 +1110,37 @@ def dashboard():
         """,
         (agora,),
     )
-    rows_sched = cur.fetchall()
+    rows_sched = cur.fetchall()   # <-- AGORA sim, logo após o SELECT
+
+    # --- Chamados em aberto (KPI + lista resumida) ---
+    cur.execute(
+        """
+        SELECT COUNT(*) AS total
+        FROM tickets
+        WHERE status = 'aberto'
+        """
+    )
+    total_chamados_abertos = cur.fetchone()["total"]
+
+    cur.execute(
+        """
+        SELECT
+            id,
+            tipo_equipamento,
+            numero_serie,
+            empresa,
+            data_abertura
+        FROM tickets
+        WHERE status = 'aberto'
+        ORDER BY data_abertura DESC
+        LIMIT 5
+        """
+    )
+    rows_chamados = cur.fetchall()
+
     conn.close()
 
+    # --- Monta proximos_agendamentos ---
     proximos_agendamentos = []
     hoje = datetime.now().date()
     for r in rows_sched:
@@ -936,6 +1152,15 @@ def dashboard():
         d["eh_hoje"] = (dt_i.date() == hoje)
         proximos_agendamentos.append(d)
 
+    # --- Monta chamados_abertos ---
+    chamados_abertos = []
+    for r in rows_chamados:
+        d = dict(r)
+        dt = datetime.strptime(d["data_abertura"], "%Y-%m-%d %H:%M:%S")
+        d["data_abertura_br"] = dt.strftime("%d/%m/%Y %H:%M")
+        d["dias_aberto"] = (hoje - dt.date()).days
+        chamados_abertos.append(d)
+
     return render_template(
         "dashboard.html",
         total_notebooks=total_notebooks,
@@ -944,7 +1169,10 @@ def dashboard():
         emprestimos_ativos=emprestimos_ativos,
         historico=historico,
         proximos_agendamentos=proximos_agendamentos,
+        total_chamados_abertos=total_chamados_abertos,
+        chamados_abertos=chamados_abertos,
     )
+
 
 @app.route("/relatorio/emprestimo")
 def relatorio_emprestimo():
@@ -1105,8 +1333,7 @@ def tv_dashboard():
         (agora,),
     )
     rows_sched = cur.fetchall()
-    conn.close()
-
+    
     proximos_agendamentos = []
     hoje = datetime.now().date()
     amanha = hoje + timedelta(days=1)
@@ -1130,6 +1357,34 @@ def tv_dashboard():
 
         proximos_agendamentos.append(d)
 
+    cur.execute(
+        """
+        SELECT
+            id,
+            tipo_equipamento,
+            numero_serie,
+            empresa,
+            data_abertura,
+            status
+        FROM tickets
+        WHERE status = 'aberto'
+        ORDER BY data_abertura
+        """
+    )
+    rows_tickets = cur.fetchall()
+
+    chamados_abertos = []
+    for r in rows_tickets:
+        d = dict(r)
+        dt_ab = datetime.strptime(d["data_abertura"], "%Y-%m-%d %H:%M:%S")
+        d["data_abertura_br"] = dt_ab.strftime("%d/%m/%Y %H:%M")
+        dias = (hoje - dt_ab.date()).days
+        d["dias_aberto"] = dias
+        chamados_abertos.append(d)
+
+    conn.close()
+
+    
     return render_template(
         "tv.html",
         body_class="tv-mode",
@@ -1138,9 +1393,11 @@ def tv_dashboard():
         disponiveis=disponiveis,
         emprestimos_ativos=emprestimos_ativos,
         proximos_agendamentos=proximos_agendamentos,
+        chamados_abertos=chamados_abertos,
+
     )
 
-
+        
 if __name__ == "__main__":
     init_db()
     app.run(host="0.0.0.0", port=5000, debug=False)
