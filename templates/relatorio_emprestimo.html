@@ -1,63 +1,137 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Relatório de Empréstimos</h2>
 
-<form method="get" class="filter-form">
-  <div class="form-grid">
-    <div>
-      <label for="status">Status</label>
-      <select id="status" name="status">
-        <option value="todos" {% if status == "todos" %}selected{% endif %}>Todos</option>
-        <option value="emprestado" {% if status == "emprestado" %}selected{% endif %}>Emprestado</option>
-        <option value="devolvido" {% if status == "devolvido" %}selected{% endif %}>Devolvido</option>
-      </select>
+<h2>Relatórios</h2>
+
+<div class="form-layout">
+  <form method="get" class="form-card">
+    <div class="form-header">
+      <p>
+        Filtre o período e, se quiser, setor/status para os empréstimos. Os mesmos
+        filtros de datas são aplicados a agendamentos e chamados.
+      </p>
     </div>
 
-    <div>
-      <label for="setor">Setor (contém)</label>
-      <input type="text" id="setor" name="setor" value="{{ setor }}">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="data_inicio">Data início</label>
+        <input
+          type="date"
+          id="data_inicio"
+          name="data_inicio"
+          value="{{ data_inicio }}"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="data_fim">Data fim</label>
+        <input
+          type="date"
+          id="data_fim"
+          name="data_fim"
+          value="{{ data_fim }}"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="setor">Setor (empréstimos)</label>
+        <input
+          type="text"
+          id="setor"
+          name="setor"
+          placeholder="Ex: DGOVI, DAF - CACC..."
+          value="{{ setor or '' }}"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="status">Status (empréstimos)</label>
+        <select id="status" name="status">
+          <option value="todos" {% if status=='todos' %}selected{% endif %}>
+            Todos
+          </option>
+          <option
+            value="emprestado"
+            {% if status=='emprestado' %}selected{% endif %}
+          >
+            Somente emprestados
+          </option>
+          <option
+            value="devolvido"
+            {% if status=='devolvido' %}selected{% endif %}
+          >
+            Somente devolvidos
+          </option>
+        </select>
+      </div>
     </div>
 
-    <div>
-      <label for="data_inicio">Data início (empréstimo)</label>
-      <input type="date" id="data_inicio" name="data_inicio" value="{{ data_inicio }}">
-    </div>
+<div class="form-actions">
+  <button type="submit" class="btn-primary">Aplicar filtros</button>
 
-    <div>
-      <label for="data_fim">Data fim (empréstimo)</label>
-      <input type="date" id="data_fim" name="data_fim" value="{{ data_fim }}">
-    </div>
-  </div>
+  <a
+    class="btn-secondary"
+    href="{{ url_for('relatorio_emprestimo',
+                    data_inicio=data_inicio,
+                    data_fim=data_fim,
+                    setor=setor,
+                    status=status,
+                    export='emprestimos') }}"
+  >
+    Exportar empréstimos (CSV)
+  </a>
 
-  <div style="margin-top: 10px;">
-    <button type="submit" class="btn-primary">Filtrar</button>
-    <a
-      href="{{ url_for('relatorio_emprestimo',
-                       status=status,
-                       setor=setor,
-                       data_inicio=data_inicio,
-                       data_fim=data_fim,
-                       export='csv') }}"
-      class="btn-secondary"
-    >
-      Exportar CSV
-    </a>
-  </div>
-</form>
+  <a
+    class="btn-secondary"
+    href="{{ url_for('relatorio_emprestimo',
+                    data_inicio=data_inicio,
+                    data_fim=data_fim,
+                    setor=setor,
+                    status=status,
+                    export='agendamentos') }}"
+  >
+    Exportar agendamentos (CSV)
+  </a>
 
-<div class="section-header" style="margin-top: 18px;">
-  <h3>Resultado</h3>
-  <span class="section-subtitle">
-    {{ rows|length }} registro(s) encontrado(s)
-  </span>
+  <a
+    class="btn-secondary"
+    href="{{ url_for('relatorio_emprestimo',
+                    data_inicio=data_inicio,
+                    data_fim=data_fim,
+                    setor=setor,
+                    status=status,
+                    export='chamados') }}"
+  >
+    Exportar chamados (CSV)
+  </a>
+
+  <a
+    class="btn-secondary"
+    href="{{ url_for('relatorio_emprestimo',
+                    data_inicio=data_inicio,
+                    data_fim=data_fim,
+                    setor=setor,
+                    status=status,
+                    export='all') }}"
+  >
+    Exportar tudo (ZIP)
+  </a>
+</div>
+
+  </form>
+</div>
+
+<!-- ==================== EMPRÉSTIMOS ==================== -->
+<div class="section-header">
+  <h3>Empréstimos</h3>
 </div>
 
 <div class="table-card">
   <div class="table-wrapper">
+    {% if emprestimos %}
     <table>
       <thead>
         <tr>
-          <th>ID</th>
           <th>Nº Série</th>
           <th>Modelo</th>
           <th>Colaborador</th>
@@ -68,26 +142,129 @@
         </tr>
       </thead>
       <tbody>
-        {% if rows %}
-          {% for r in rows %}
-            <tr>
-              <td>{{ r.id }}</td>
-              <td>{{ r.serial }}</td>
-              <td>{{ r.modelo or "-" }}</td>
-              <td>{{ r.colaborador_nome }}</td>
-              <td>{{ r.colaborador_setor or "-" }}</td>
-              <td>{{ r.data_hora_emprestimo }}</td>
-              <td>{{ r.data_hora_devolucao or "-" }}</td>
-              <td>{{ r.status }}</td>
-            </tr>
-          {% endfor %}
-        {% else %}
-          <tr>
-            <td colspan="8">Nenhum empréstimo encontrado com os filtros atuais.</td>
-          </tr>
-        {% endif %}
+        {% for e in emprestimos %}
+        <tr>
+          <td>{{ e.serial }}</td>
+          <td>{{ e.modelo }}</td>
+          <td>{{ e.colaborador_nome }}</td>
+          <td>{{ e.colaborador_setor }}</td>
+          <td>{{ e.emprestimo_br }}</td>
+          <td>{{ e.devolucao_br }}</td>
+          <td>{{ e.status }}</td>
+        </tr>
+        {% endfor %}
       </tbody>
     </table>
+    {% else %}
+    <table>
+      <tbody>
+        <tr>
+          <td>Nenhum empréstimo encontrado no período informado.</td>
+        </tr>
+      </tbody>
+    </table>
+    {% endif %}
   </div>
 </div>
+
+<!-- ==================== AGENDAMENTOS ==================== -->
+<div class="section-header">
+  <h3>Agendamentos</h3>
+</div>
+
+<div class="table-card">
+  <div class="table-wrapper">
+    {% if agendamentos %}
+    <table>
+      <thead>
+        <tr>
+          <th>Nº Série</th>
+          <th>Modelo</th>
+          <th>Colaborador</th>
+          <th>Setor</th>
+          <th>Início</th>
+          <th>Fim</th>
+          <th>Som</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in agendamentos %}
+        <tr>
+          <td>{{ a.serial }}</td>
+          <td>{{ a.modelo }}</td>
+          <td>{{ a.colaborador_nome }}</td>
+          <td>{{ a.colaborador_setor }}</td>
+          <td>{{ a.data_inicio_br }}</td>
+          <td>{{ a.data_fim_br }}</td>
+          <td>{% if a.inclui_som %}Com som{% else %}Sem som{% endif %}</td>
+          <td>{{ a.status }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <table>
+      <tbody>
+        <tr>
+          <td>Nenhum agendamento encontrado no período informado.</td>
+        </tr>
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ==================== CHAMADOS ==================== -->
+<div class="section-header">
+  <h3>Chamados</h3>
+</div>
+
+<div class="table-card">
+  <div class="table-wrapper">
+    {% if chamados %}
+    <table>
+      <thead>
+        <tr>
+          <th>Equipamento / Nº de série</th>
+          <th>Empresa</th>
+          <th>Marca / Modelo</th>
+          <th>Defeito</th>
+          <th>Data abertura</th>
+          <th>Status</th>
+          <th>Dias em aberto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in chamados %}
+        <tr>
+          <td>
+            {{ c.tipo_equipamento }}
+            {% if c.numero_serie %} — {{ c.numero_serie }}{% endif %}
+          </td>
+          <td>{{ c.empresa }}</td>
+          <td>
+            {{ c.marca }}
+            {% if c.modelo %} — {{ c.modelo }}{% endif %}
+          </td>
+          <td>{{ c.defeito }}</td>
+          <td>{{ c.data_abertura_br }}</td>
+          <td>{{ c.status }}</td>
+          <td>{{ c.dias_aberto }} dia{% if c.dias_aberto != 1 %}s{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <table>
+      <tbody>
+        <tr>
+          <td>Nenhum chamado encontrado no período informado.</td>
+        </tr>
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+
 {% endblock %}

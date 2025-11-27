@@ -4,20 +4,13 @@ import subprocess
 import shutil
 import os
 import re
+import io
+import zipfile
 from io import StringIO
 from datetime import datetime, timedelta, date
 from docxtpl import DocxTemplate
 from flask import (
-    Flask,
-    render_template,
-    request,
-    redirect,
-    url_for,
-    flash,
-    Response,
-    send_file,
-    abort,
-
+    Flask, render_template, request, redirect, url_for, flash, Response, send_file, abort, make_response,
 )
 
 # - Constantes
@@ -1176,40 +1169,51 @@ def dashboard():
 
 @app.route("/relatorio/emprestimo")
 def relatorio_emprestimo():
-    status = request.args.get("status", "todos")
-    setor = request.args.get("setor", "").strip()
-    dt_ini = request.args.get("data_inicio", "").strip()
-    dt_fim = request.args.get("data_fim", "").strip()
-    export = request.args.get("export")
+    data_inicio = request.args.get("data_inicio")
+    data_fim = request.args.get("data_fim")
+    setor = request.args.get("setor") or ""
+    status = request.args.get("status") or "todos"
+    export = request.args.get("export")  # emprestimos / agendamentos / chamados / all
+
+    hoje = datetime.now().date()
+
+    # Se não vier data, usa últimos 7 dias
+    if data_inicio:
+        dt_ini = datetime.strptime(data_inicio, "%Y-%m-%d").date()
+    else:
+        dt_ini = hoje - timedelta(days=7)
+
+    if data_fim:
+        dt_fim = datetime.strptime(data_fim, "%Y-%m-%d").date()
+    else:
+        dt_fim = hoje
+
+    # strings para o form
+    data_inicio_str = dt_ini.strftime("%Y-%m-%d")
+    data_fim_str = dt_fim.strftime("%Y-%m-%d")
+
+    # limites para SQL (dia inteiro)
+    dt_ini_sql = f"{data_inicio_str} 00:00:00"
+    dt_fim_sql = f"{data_fim_str} 23:59:59"
 
     conn = get_connection()
     cur = conn.cursor()
 
-    conds = []
-    params = []
-
-    if status in ("emprestado", "devolvido"):
-        conds.append("l.status = ?")
-        params.append(status)
+    # =========================
+    # 1) EMPRÉSTIMOS
+    # =========================
+    where = ["l.data_hora_emprestimo BETWEEN ? AND ?"]
+    params = [dt_ini_sql, dt_fim_sql]
 
     if setor:
-        conds.append("l.colaborador_setor LIKE ?")
-        params.append("%" + setor + "%")
+        where.append("l.colaborador_setor = ?")
+        params.append(setor)
 
-    if dt_ini:
-        # dt_ini vem como YYYY-MM-DD do input type="date"
-        conds.append("date(l.data_hora_emprestimo) >= date(?)")
-        params.append(dt_ini)
+    if status and status != "todos":
+        where.append("l.status = ?")
+        params.append(status)
 
-    if dt_fim:
-        conds.append("date(l.data_hora_emprestimo) <= date(?)")
-        params.append(dt_fim)
-
-    where = ""
-    if conds:
-        where = "WHERE " + " AND ".join(conds)
-
-    query = f"""
+    sql_loans = f"""
         SELECT
             l.id,
             n.serial,
@@ -1221,58 +1225,256 @@ def relatorio_emprestimo():
             l.status
         FROM loans l
         JOIN notebooks n ON n.id = l.notebook_id
-        {where}
+        WHERE {" AND ".join(where)}
         ORDER BY l.data_hora_emprestimo DESC
     """
+    cur.execute(sql_loans, params)
+    rows_loans = cur.fetchall()
 
-    cur.execute(query, params)
-    rows = cur.fetchall()
+    # =========================
+    # 2) AGENDAMENTOS
+    # =========================
+    cur.execute(
+        """
+        SELECT
+            s.id,
+            n.serial,
+            n.modelo,
+            s.colaborador_nome,
+            s.colaborador_setor,
+            s.data_inicio,
+            s.data_fim,
+            s.inclui_som,
+            s.status
+        FROM schedules s
+        JOIN notebooks n ON n.id = s.notebook_id
+        WHERE s.data_inicio BETWEEN ? AND ?
+        ORDER BY s.data_inicio DESC
+        """,
+        (dt_ini_sql, dt_fim_sql),
+    )
+    rows_ag = cur.fetchall()
+
+    # =========================
+    # 3) CHAMADOS
+    # =========================
+    cur.execute(
+        """
+        SELECT
+            id,
+            tipo_equipamento,
+            numero_serie,
+            empresa,
+            marca,
+            modelo,
+            defeito,
+            data_abertura,
+            status
+        FROM tickets
+        WHERE data_abertura BETWEEN ? AND ?
+        ORDER BY data_abertura DESC
+        """,
+        (dt_ini_sql, dt_fim_sql),
+    )
+    rows_ch = cur.fetchall()
+
     conn.close()
 
-    # Se for exportar CSV
-    if export == "csv":
-        si = StringIO()
-        writer = csv.writer(si, delimiter=';')
+    # ---------- Monta listas para tela + CSV ----------
+    # Empréstimos
+    emprestimos = []
+    for r in rows_loans:
+        d = dict(r)
+        dt_e = datetime.strptime(d["data_hora_emprestimo"], "%Y-%m-%d %H:%M:%S")
+        d["emprestimo_br"] = dt_e.strftime("%d/%m/%Y %H:%M")
+        if d["data_hora_devolucao"]:
+            dt_d = datetime.strptime(d["data_hora_devolucao"], "%Y-%m-%d %H:%M:%S")
+            d["devolucao_br"] = dt_d.strftime("%d/%m/%Y %H:%M")
+        else:
+            d["devolucao_br"] = "-"
+        emprestimos.append(d)
 
-        # Cabeçalho
-        writer.writerow([
-            "ID",
-            "Nº Série",
-            "Modelo",
-            "Colaborador",
-            "Setor",
-            "Data/Hora Empréstimo",
-            "Data/Hora Devolução",
-            "Status",
-        ])
+    # Agendamentos
+    agendamentos = []
+    for r in rows_ag:
+        d = dict(r)
+        di = datetime.strptime(d["data_inicio"], "%Y-%m-%d %H:%M:%S")
+        df = datetime.strptime(d["data_fim"], "%Y-%m-%d %H:%M:%S")
+        d["data_inicio_br"] = di.strftime("%d/%m/%Y %H:%M")
+        d["data_fim_br"] = df.strftime("%d/%m/%Y %H:%M")
+        agendamentos.append(d)
 
-        # Linhas
-        for r in rows:
-            writer.writerow([
-                r["id"],
-                r["serial"],
-                r["modelo"] or "",
-                r["colaborador_nome"],
-                r["colaborador_setor"] or "",
-                r["data_hora_emprestimo"],
-                r["data_hora_devolucao"] or "",
-                r["status"],
-            ])
+    # Chamados
+    chamados = []
+    for r in rows_ch:
+        d = dict(r)
+        dt_ab = datetime.strptime(d["data_abertura"], "%Y-%m-%d %H:%M:%S")
+        d["data_abertura_br"] = dt_ab.strftime("%d/%m/%Y %H:%M")
+        d["dias_aberto"] = (hoje - dt_ab.date()).days
+        chamados.append(d)
 
-        output = si.getvalue()
-        resp = Response(output, mimetype="text/csv; charset=utf-8")
-        resp.headers["Content-Disposition"] = "attachment; filename=relatorio_emprestimo.csv"
-        return resp
+    # ===== Helpers para gerar CSV =====
+    def csv_emprestimos():
+        si = io.StringIO()
+        w = csv.writer(si, delimiter=";")
+        w.writerow(
+            [
+                "Nº Série",
+                "Modelo",
+                "Colaborador",
+                "Setor",
+                "Empréstimo",
+                "Devolução",
+                "Status",
+            ]
+        )
+        for e in emprestimos:
+            w.writerow(
+                [
+                    e["serial"],
+                    e["modelo"],
+                    e["colaborador_nome"],
+                    e["colaborador_setor"],
+                    e["emprestimo_br"],
+                    e["devolucao_br"],
+                    e["status"],
+                ]
+            )
+        return si.getvalue()
 
-    # Caso normal: exibir na tela
+    def csv_agendamentos():
+        si = io.StringIO()
+        w = csv.writer(si, delimiter=";")
+        w.writerow(
+            [
+                "Nº Série",
+                "Modelo",
+                "Colaborador",
+                "Setor",
+                "Início",
+                "Fim",
+                "Som",
+                "Status",
+            ]
+        )
+        for a in agendamentos:
+            w.writerow(
+                [
+                    a["serial"],
+                    a["modelo"],
+                    a["colaborador_nome"],
+                    a["colaborador_setor"],
+                    a["data_inicio_br"],
+                    a["data_fim_br"],
+                    "Com som" if a["inclui_som"] else "Sem som",
+                    a["status"],
+                ]
+            )
+        return si.getvalue()
+
+    def csv_chamados():
+        si = io.StringIO()
+        w = csv.writer(si, delimiter=";")
+        w.writerow(
+            [
+                "Tipo equipamento",
+                "Nº Série",
+                "Empresa",
+                "Marca",
+                "Modelo",
+                "Defeito",
+                "Data abertura",
+                "Status",
+                "Dias em aberto",
+            ]
+        )
+        for c in chamados:
+            w.writerow(
+                [
+                    c["tipo_equipamento"],
+                    c["numero_serie"],
+                    c["empresa"],
+                    c["marca"],
+                    c["modelo"],
+                    c["defeito"],
+                    c["data_abertura_br"],
+                    c["status"],
+                    c["dias_aberto"],
+                ]
+            )
+        return si.getvalue()
+
+    # =========================
+    # EXPORT CSV / ZIP
+    # =========================
+    if export:
+        # Export individual
+        if export == "emprestimos":
+            csv_data = csv_emprestimos()
+            resp = make_response(csv_data)
+            resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+            resp.headers[
+                "Content-Disposition"
+            ] = "attachment; filename=relatorio_emprestimos.csv"
+            return resp
+
+        if export == "agendamentos":
+            csv_data = csv_agendamentos()
+            resp = make_response(csv_data)
+            resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+            resp.headers[
+                "Content-Disposition"
+            ] = "attachment; filename=relatorio_agendamentos.csv"
+            return resp
+
+        if export == "chamados":
+            csv_data = csv_chamados()
+            resp = make_response(csv_data)
+            resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+            resp.headers[
+                "Content-Disposition"
+            ] = "attachment; filename=relatorio_chamados.csv"
+            return resp
+
+        # Export TUDO (ZIP com 3 CSVs)
+        if export == "all":
+            mem_zip = io.BytesIO()
+            with zipfile.ZipFile(mem_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(
+                    "relatorio_emprestimos.csv",
+                    csv_emprestimos().encode("utf-8-sig"),
+                )
+                zf.writestr(
+                    "relatorio_agendamentos.csv",
+                    csv_agendamentos().encode("utf-8-sig"),
+                )
+                zf.writestr(
+                    "relatorio_chamados.csv",
+                    csv_chamados().encode("utf-8-sig"),
+                )
+
+            mem_zip.seek(0)
+            resp = make_response(mem_zip.getvalue())
+            resp.headers["Content-Type"] = "application/zip"
+            resp.headers[
+                "Content-Disposition"
+            ] = "attachment; filename=relatorios_completos.zip"
+            return resp
+
+    # Se não for export, renderiza a página normal
     return render_template(
         "relatorio_emprestimo.html",
-        rows=rows,
-        status=status,
+        emprestimos=emprestimos,
+        agendamentos=agendamentos,
+        chamados=chamados,
+        data_inicio=data_inicio_str,
+        data_fim=data_fim_str,
         setor=setor,
-        data_inicio=dt_ini,
-        data_fim=dt_fim,
+        status=status,
     )
+
+
+
 
 # ===================== MODO TV =====================
 

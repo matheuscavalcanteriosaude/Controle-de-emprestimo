@@ -25,6 +25,8 @@
       />
       <span class="logo-system-name">Controle de Atividades - Service Desk</span>
     </div>
+
+    {%if body_class != 'tv-mode'%}
 <nav>
   <a href="{{ url_for('dashboard') }}">Dashboard</a>
   <a href="{{ url_for('emprestimo') }}">Novo Empréstimo</a>
@@ -32,6 +34,7 @@
   <a href="{{ url_for('agendamentos') }}">Agendamentos</a>
   <a href="{{ url_for('relatorio_emprestimo')}}"class="nav-highlight">Relatórios</a>
 </nav>
+    {% endif %}
 
   </div>
 </header>
@@ -53,7 +56,7 @@
   </main>
 
   <footer>
-    <small>DGOVI - Suporte em TI &mdash; Controle de Empréstimos</small>
+    <small>DGOVI - Suporte em TI &mdash; Controle de Atividades</small>
   </footer>
 </body>
 </html>
