@@ -199,4 +199,53 @@
     {% endif %}
   </div>
 </div>
+
+<!-- Rotas solicitadas -->
+<div class="section-header">
+  <h3>Rotas solicitadas</h3>
+</div>
+
+<div class="table-card">
+  <div class="table-wrapper">
+    {% if rotas_dashboard %}
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Solicitante / Unidade</th>
+            <th>Prioridade</th>
+            <th>Destino</th>
+            <th>Descrição do volume</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rota in rotas_dashboard %}
+            <tr>
+              <td>{{ rota.data_solicitacao_br }}</td>
+              <td>
+                {{ rota.solicitante }}
+                <br><span class="tv-sub">{{ rota.unidade_origem }}</span>
+              </td>
+              <td>
+                <span class="badge-prioridade {{ rota.prioridade_css }}">
+                  {{ rota.prioridade_label }}
+                </span>
+              </td>
+              <td>{{ rota.destino }}</td>
+              <td>{{ rota.descricao_volume }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <table>
+        <tbody>
+          <tr>
+            <td>Nenhuma rota cadastrada recentemente.</td>
+          </tr>
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

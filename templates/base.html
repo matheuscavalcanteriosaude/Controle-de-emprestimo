@@ -3,6 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <title>{{ title or "Controle de Atividades - Service Desk" }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png"
+        href="{{ url_for('static', filename='img/favicon.png') }}">
+  <link rel="shortcut icon" type="image/png"
+        href="{{ url_for('static', filename='img/favicon.png') }}">
 
   <!-- Fonte mais moderna -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,15 +34,33 @@
     </div>
 
     {%if body_class != 'tv-mode'%}
-<nav>
-  <a href="{{ url_for('dashboard') }}">Dashboard</a>
-  <a href="{{ url_for('emprestimo') }}">Novo Empréstimo</a>
-  <a href="{{ url_for('lista_chamados') }}">Chamados</a>
-  <a href="{{ url_for('agendamentos') }}">Agendamentos</a>
-  <a href="{{ url_for('relatorio_emprestimo')}}"class="nav-highlight">Relatórios</a>
-</nav>
+<nav class="top-nav">
+      <a href="{{ url_for('dashboard') }}"
+         class="nav-link {% if request.endpoint == 'dashboard' %}is-active{% endif %}">
+        Dashboard
+      </a>
+      <a href="{{ url_for('agendamentos') }}"
+         class="nav-link {% if request.endpoint == 'agendamentos' %}is-active{% endif %}">
+        Agendamentos
+      </a>
+      <a href="{{ url_for('emprestimo') }}"
+         class="nav-link {% if request.endpoint == 'emprestimo' %}is-active{% endif %}">
+        Novo Empréstimo
+      </a>    
+      <a href="{{ url_for('lista_chamados') }}"
+         class="nav-link {% if 'chamado' in request.endpoint %}is-active{% endif %}">
+        Chamados
+      </a>
+      <a href="{{ url_for('lista_rotas') }}"
+         class="nav-link {% if request.endpoint == 'lista_rotas' %}is-active{% endif %}">
+        Rotas
+      </a>
+      <a href="{{ url_for('relatorio_emprestimo') }}"
+         class="nav-link {% if request.endpoint == 'relatorio_emprestimo' %}is-active{% endif %}">
+        Relatórios
+      </a>      
+    </nav>
     {% endif %}
-
   </div>
 </header>
 

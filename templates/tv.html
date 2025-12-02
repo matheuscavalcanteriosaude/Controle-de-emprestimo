@@ -1,4 +1,8 @@
 {% extends "base.html" %}
+{% block extra_head %}
+  <!-- Atualiza a página a cada 30 segundos -->
+  <meta http-equiv="refresh" content="30">
+{% endblock %}
 {% block title %}Painel de Empréstimos e Agendamentos{% endblock %}
 
 {% block content %}
@@ -18,7 +22,7 @@
     <p class="kpi-label">Disponíveis</p>
     <p class="kpi-value">{{ disponiveis }}</p>
   </div>
-    <div class="kpi-card">
+  <div class="kpi-card">
     <p class="kpi-label">Chamados em aberto</p>
     <p class="kpi-value">{{ chamados_abertos | length }}</p>
   </div>
@@ -55,7 +59,7 @@
                   <td>{{ e.colaborador_setor }}</td>
                   <td>{{ e.data_hora_emprestimo }}</td>
                   <td>
-                    <span class="badge-limite badge-limite-{{ e.nivel_limite }}">
+                    <span class="deadline-badge {{ e.nivel_limite }}">
                       {{ e.tempo_limite }}
                     </span>
                   </td>
@@ -115,8 +119,9 @@
     </div>
   </div>
 
-  <!-- COLUNA DIREITA: Agendamentos -->
+  <!-- COLUNA DIREITA: Agendamentos + Rotas -->
   <div class="tv-col-right">
+    <!-- Agendamentos -->
     <div class="section-header">
       <h3>Agendamentos</h3>
       <span class="section-sub">Destaque para os agendamentos de hoje</span>
@@ -165,6 +170,50 @@
             {% endif %}
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Rotas solicitadas -->
+    <div>
+      <div class="section-header" style="margin-top: 24px;">
+        <h3>Rotas solicitadas</h3>
+      </div>
+
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Solicitante / Unidade</th>
+                <th>Prioridade</th>
+                <th>Destino</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for rota in rotas_tv %}
+                <tr>
+                  <td>
+                    {{ rota.solicitante }}
+                    <br><span class="tv-sub">{{ rota.unidade_origem }}</span>
+                  </td>
+                  <td>
+                    <span class="badge-prioridade {{ rota.prioridade_css }}">
+                      {{ rota.prioridade_label }}
+                    </span>
+                  </td>
+                  <td>{{ rota.destino }}</td>
+                  <td>{{ rota.data_solicitacao_br }}</td>
+                </tr>
+              {% endfor %}
+              {% if rotas_tv|length == 0 %}
+                <tr>
+                  <td colspan="4">Nenhuma rota recente cadastrada.</td>
+                </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>

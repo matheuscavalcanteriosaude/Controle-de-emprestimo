@@ -16,7 +16,12 @@ header {
   background: #000000;
   color: #fff;
   padding: 10px 20px;
+
+  position: sticky;   /* fica “grudado” no topo */
+  top: 0;
+  z-index: 1000;      /* fica por cima do resto */
 }
+
 
 .header-inner {
   max-width: 1200px;
@@ -51,6 +56,42 @@ header {
   padding: 6px 10px;
   font-size: 13px;
 }
+
+.topbar {
+  background: #000;
+  color: #fff;
+}
+
+.topbar-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.top-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  text-decoration: none;
+  color: #e5e7eb;
+}
+
+.nav-link.is-active {
+  background: #2563eb;
+  color: #fff;
+}
+
 
 .logo-text {
   font-size: 18px;
@@ -187,6 +228,18 @@ h2 {
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
   gap: 20px;
 }
+
+/* Para páginas que quiser 2 colunas iguais */
+.form-layout-2col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 960px) {
+  .form-layout-2col {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 
 @media (max-width: 900px) {
   .form-layout {
@@ -367,6 +420,45 @@ tbody tr:hover {
   color: #7f1d1d;
 }
 
+/* ===== PRIORIDADE DAS ROTAS ===== */
+
+.badge-prioridade {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Imediata = vermelho claro */
+.badge-prioridade-imediata {
+  background: #fee2e2;   /* vermelho bem claro */
+  color: #b91c1c;        /* vermelho escuro */
+}
+
+/* Alta = laranja/amarelo */
+.badge-prioridade-alta {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* Média = azul claro */
+.badge-prioridade-media {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* Baixa = cinza */
+.badge-prioridade-baixa {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+
 .btn-danger {
   border-color: #b91c1c;
   color: #b91c1c;
@@ -423,6 +515,24 @@ tbody tr:hover {
 .ag-horario {
   font-size: 12px;
   color: #4b5563;
+}
+
+/* Versão mais "fina" dos cards para listagens empilhadas */
+.ag-grid-sm .ag-card {
+  padding: 12px 16px;
+  min-height: auto;
+}
+
+.ag-card-sm {
+  padding: 12px 16px;
+}
+
+.ag-card-sm .ag-card-header {
+  margin-bottom: 6px;
+}
+
+.ag-card-sm p {
+  margin: 2px 0;
 }
 
 .badge-hoje {
@@ -676,3 +786,38 @@ tbody tr:hover {
   background: #fef2f2;
   border: 1px solid #fecaca;
 }
+
+.limit-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* cores por nível */
+.limit-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.limit-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.limit-danger {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.inline-form {
+  display: inline;
+  margin: 0;
+}
+
+.inline-form button {
+  margin-right: 4px;
+}
+

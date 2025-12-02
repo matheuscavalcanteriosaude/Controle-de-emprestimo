@@ -10,7 +10,7 @@ from io import StringIO
 from datetime import datetime, timedelta, date
 from docxtpl import DocxTemplate
 from flask import (
-    Flask, render_template, request, redirect, url_for, flash, Response, send_file, abort, make_response,
+    Flask, render_template, request, redirect, url_for, flash, Response, send_file, abort, make_response, jsonify,
 )
 
 # - Constantes
@@ -42,6 +42,28 @@ MARCAS_EQUIP = [
     "3Green",
     "Multi",
 ]
+
+
+# Label de prioridades
+
+def mapear_prioridade(prioridade_raw: str):
+    """Recebe o texto vindo do Forms e devolve (label_curta, classe_css)."""
+    if not prioridade_raw:
+        return ("-", "badge-prioridade-baixa")
+
+    p = prioridade_raw.lower()
+
+    if "imediat" in p:   # "Imediata (Após 12h ...)"
+        return ("Imediata", "badge-prioridade-imediata")
+    if "alta" in p:
+        return ("Alta", "badge-prioridade-alta")
+    if "média" in p or "media" in p:
+        return ("Média", "badge-prioridade-media")
+    if "baixa" in p:
+        return ("Baixa", "badge-prioridade-baixa")
+
+    # fallback
+    return (prioridade_raw, "badge-prioridade-baixa")
 
 
 # - Gerador de termos
@@ -190,6 +212,23 @@ def init_db():
     conn = get_connection()
     cur = conn.cursor()
 
+    # Tabela de rotas
+
+    cur.execute(
+    """
+    CREATE TABLE IF NOT EXISTS rotas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        data_solicitacao TEXT NOT NULL,
+        solicitante TEXT NOT NULL,
+        unidade_origem TEXT NOT NULL,
+        prioridade TEXT NOT NULL,
+        destino TEXT NOT NULL,
+        descricao_volume TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente'
+    )
+    """
+)
+
     # Tabela de notebooks (estoque)
     cur.execute(
         """
@@ -302,6 +341,133 @@ def calcular_tempo_limite(data_hora_emprestimo_str: str):
     return texto, nivel
 
 # ------------------------ ROTAS ----------------------------- #
+
+# Rotas DOP
+
+@app.route("/rotas")
+def lista_rotas():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT
+            id,
+            data_solicitacao,
+            solicitante,
+            unidade_origem,
+            prioridade,
+            destino,
+            descricao_volume,
+            status
+        FROM rotas
+        ORDER BY data_solicitacao DESC
+        """
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    rotas = []
+    for r in rows:
+        d = dict(r)
+        dt = datetime.strptime(d["data_solicitacao"], "%Y-%m-%d %H:%M:%S")
+        d["data_solicitacao_br"] = dt.strftime("%d/%m/%Y %H:%M")
+
+        label, css = mapear_prioridade(d.get("prioridade", ""))
+        d["prioridade_label"] = label
+        d["prioridade_css"] = css
+
+        rotas.append(d)
+
+    return render_template("rotas.html", rotas=rotas)
+
+# Rotas enviadas
+
+@app.route("/rotas/enviar/<int:rota_id>", methods=["POST"])
+def marcar_rota_enviada(rota_id):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE rotas SET status = 'enviada' WHERE id = ?",
+        (rota_id,),
+    )
+    conn.commit()
+    conn.close()
+
+    flash("Rota marcada como enviada.", "success")
+    return redirect(url_for("lista_rotas"))
+
+# Rotas DOP - Email
+
+@app.route("/api/rotas_email", methods=["POST"])
+def api_rotas_email():
+    """
+    Endpoint chamado pelo Apps Script.
+    Recebe JSON com:
+      - solicitante
+      - unidade_origem
+      - prioridade
+      - destino
+      - descricao_volume
+    Grava na tabela rotas.
+    """
+    data = request.get_json(force=True)
+
+    obrigatorios = [
+        "solicitante",
+        "unidade_origem",
+        "prioridade",
+        "destino",
+        "descricao_volume",
+    ]
+
+    for campo in obrigatorios:
+        if not data.get(campo):
+            return jsonify(
+                {"ok": False, "erro": f"Campo '{campo}' obrigatório"}
+            ), 400
+
+    # normaliza textos (tira espaços a mais)
+    solicitante = data["solicitante"].strip()
+    unidade_origem = data["unidade_origem"].strip()
+    prioridade = data["prioridade"].strip()
+    destino = data["destino"].strip()
+    descricao_volume = data["descricao_volume"].strip()
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # data/hora que a rota entrou no sistema
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    cur.execute(
+        """
+        INSERT INTO rotas (
+            data_solicitacao,
+            solicitante,
+            unidade_origem,
+            prioridade,
+            destino,
+            descricao_volume,
+            status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 'pendente')
+        """,
+        (
+            agora,
+            solicitante,
+            unidade_origem,
+            prioridade,
+            destino,
+            descricao_volume,
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"ok": True})
+
+# Chamados
 
 @app.route("/chamados/novo", methods=["GET", "POST"])
 def novo_chamado():
@@ -1103,7 +1269,7 @@ def dashboard():
         """,
         (agora,),
     )
-    rows_sched = cur.fetchall()   # <-- AGORA sim, logo após o SELECT
+    rows_sched = cur.fetchall()
 
     # --- Chamados em aberto (KPI + lista resumida) ---
     cur.execute(
@@ -1131,11 +1297,32 @@ def dashboard():
     )
     rows_chamados = cur.fetchall()
 
+    # --- Rotas recentes para o card "Rotas solicitadas" ---
+    cur.execute(
+        """
+        SELECT
+            id,
+            data_solicitacao,
+            solicitante,
+            unidade_origem,
+            prioridade,
+            destino,
+            descricao_volume,
+            status
+        FROM rotas
+        WHERE status = 'pendente'
+        ORDER BY data_solicitacao DESC
+        LIMIT 10
+        """
+    )
+    rows_rotas = cur.fetchall()
+
     conn.close()
+
+    hoje = datetime.now().date()
 
     # --- Monta proximos_agendamentos ---
     proximos_agendamentos = []
-    hoje = datetime.now().date()
     for r in rows_sched:
         d = dict(r)
         dt_i = datetime.strptime(d["data_inicio"], "%Y-%m-%d %H:%M:%S")
@@ -1154,6 +1341,22 @@ def dashboard():
         d["dias_aberto"] = (hoje - dt.date()).days
         chamados_abertos.append(d)
 
+    # --- Monta rotas_dashboard ---
+    rotas_dashboard = []
+    for r in rows_rotas:
+        d = dict(r)
+        try:
+            dt = datetime.strptime(d["data_solicitacao"], "%Y-%m-%d %H:%M:%S")
+            d["data_solicitacao_br"] = dt.strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            d["data_solicitacao_br"] = d["data_solicitacao"]
+
+        label, css = mapear_prioridade(d.get("prioridade", ""))
+        d["prioridade_label"] = label
+        d["prioridade_css"] = css
+
+        rotas_dashboard.append(d)
+
     return render_template(
         "dashboard.html",
         total_notebooks=total_notebooks,
@@ -1164,7 +1367,167 @@ def dashboard():
         proximos_agendamentos=proximos_agendamentos,
         total_chamados_abertos=total_chamados_abertos,
         chamados_abertos=chamados_abertos,
+        rotas_dashboard=rotas_dashboard,
     )
+
+
+@app.route("/tv")
+def tv_dashboard():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # Total de notebooks
+    cur.execute("SELECT COUNT(*) AS total FROM notebooks WHERE status = 'ativo'")
+    total_notebooks = cur.fetchone()["total"]
+
+    # Empréstimos ativos
+    cur.execute(
+        """
+        SELECT
+            l.id,
+            n.serial,
+            n.modelo,
+            l.colaborador_nome,
+            l.colaborador_setor,
+            l.data_hora_emprestimo
+        FROM loans l
+        JOIN notebooks n ON n.id = l.notebook_id
+        WHERE l.status = 'emprestado'   
+        ORDER BY l.data_hora_emprestimo DESC
+        """
+    )
+    rows_ativos = cur.fetchall()
+
+    emprestimos_ativos = []
+    for r in rows_ativos:
+        d = dict(r)
+        texto_limite, nivel_limite = calcular_tempo_limite(d["data_hora_emprestimo"])
+        d["tempo_limite"] = texto_limite
+        d["nivel_limite"] = nivel_limite
+        emprestimos_ativos.append(d)
+
+    total_emprestados = len(emprestimos_ativos)
+    disponiveis = total_notebooks - total_emprestados
+
+    # Agendamentos
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute(
+        """
+        SELECT
+            s.id,
+            n.serial,
+            n.modelo,
+            s.colaborador_nome,
+            s.colaborador_setor,
+            s.data_inicio,
+            s.data_fim,
+            s.inclui_som
+        FROM schedules s
+        JOIN notebooks n ON n.id = s.notebook_id
+        WHERE s.status = 'agendado'
+          AND s.data_fim >= ?
+        ORDER BY s.data_inicio
+        """,
+        (agora,),
+    )
+    rows_sched = cur.fetchall()
+
+    proximos_agendamentos = []
+    hoje = datetime.now().date()
+    amanha = hoje + timedelta(days=1)
+
+    for r in rows_sched:
+        d = dict(r)
+        dt_i = datetime.strptime(d["data_inicio"], "%Y-%m-%d %H:%M:%S")
+        dt_f = datetime.strptime(d["data_fim"], "%Y-%m-%d %H:%M:%S")
+        d["data_inicio_br"] = dt_i.strftime("%d/%m/%Y %H:%M")
+        d["data_fim_br"] = dt_f.strftime("%d/%m/%Y %H:%M")
+
+        if dt_i.date() == hoje:
+            d["dia_label"] = "HOJE"
+            d["classe_dia"] = "hoje"
+        elif dt_i.date() == amanha:
+            d["dia_label"] = "AMANHÃ"
+            d["classe_dia"] = "amanha"
+        else:
+            d["dia_label"] = dt_i.strftime("%d/%m")
+            d["classe_dia"] = "futuro"
+
+        proximos_agendamentos.append(d)
+
+    # Chamados em aberto
+    cur.execute(
+        """
+        SELECT
+            id,
+            tipo_equipamento,
+            numero_serie,
+            empresa,
+            data_abertura,
+            status
+        FROM tickets
+        WHERE status = 'aberto'
+        ORDER BY data_abertura
+        """
+    )
+    rows_tickets = cur.fetchall()
+
+    chamados_abertos = []
+    for r in rows_tickets:
+        d = dict(r)
+        dt_ab = datetime.strptime(d["data_abertura"], "%Y-%m-%d %H:%M:%S")
+        d["data_abertura_br"] = dt_ab.strftime("%d/%m/%Y %H:%M")
+        dias = (hoje - dt_ab.date()).days
+        d["dias_aberto"] = dias
+        chamados_abertos.append(d)
+
+    # Rotas para TV (últimas 10)
+    cur.execute(
+        """
+        SELECT
+            id,
+            data_solicitacao,
+            solicitante,
+            unidade_origem,
+            prioridade,
+            destino,
+            descricao_volume,
+            status
+        FROM rotas
+        WHERE status = 'pendente'
+        ORDER BY data_solicitacao DESC
+        LIMIT 10
+        """
+    )
+    rows_rotas_tv = cur.fetchall()
+
+    rotas_tv = []
+    for r in rows_rotas_tv:
+        d = dict(r)
+        dt = datetime.strptime(d["data_solicitacao"], "%Y-%m-%d %H:%M:%S")
+        d["data_solicitacao_br"] = dt.strftime("%d/%m/%Y %H:%M")
+
+        label, css = mapear_prioridade(d.get("prioridade", ""))
+        d["prioridade_label"] = label
+        d["prioridade_css"] = css
+
+        # <-- ESSA LINHA TEM QUE ESTAR DENTRO DO FOR
+        rotas_tv.append(d)
+
+    conn.close()
+
+    return render_template(
+        "tv.html",
+        body_class="tv-mode",
+        total_notebooks=total_notebooks,
+        total_emprestados=total_emprestados,
+        disponiveis=disponiveis,
+        emprestimos_ativos=emprestimos_ativos,
+        proximos_agendamentos=proximos_agendamentos,
+        chamados_abertos=chamados_abertos,
+        rotas_tv=rotas_tv,
+    )
+
 
 
 @app.route("/relatorio/emprestimo")
@@ -1173,7 +1536,7 @@ def relatorio_emprestimo():
     data_fim = request.args.get("data_fim")
     setor = request.args.get("setor") or ""
     status = request.args.get("status") or "todos"
-    export = request.args.get("export")  # emprestimos / agendamentos / chamados / all
+    export = request.args.get("export")  # emprestimos / agendamentos / chamados / rotas / all
 
     hoje = datetime.now().date()
 
@@ -1278,9 +1641,32 @@ def relatorio_emprestimo():
     )
     rows_ch = cur.fetchall()
 
+    # =========================
+    # 4) ROTAS
+    # =========================
+    cur.execute(
+        """
+        SELECT
+            id,
+            data_solicitacao,
+            solicitante,
+            unidade_origem,
+            prioridade,
+            destino,
+            descricao_volume,
+            status
+        FROM rotas
+        WHERE data_solicitacao BETWEEN ? AND ?
+        ORDER BY data_solicitacao DESC
+        """,
+        (dt_ini_sql, dt_fim_sql),
+    )
+    rows_rotas = cur.fetchall()
+
     conn.close()
 
     # ---------- Monta listas para tela + CSV ----------
+
     # Empréstimos
     emprestimos = []
     for r in rows_loans:
@@ -1312,6 +1698,17 @@ def relatorio_emprestimo():
         d["data_abertura_br"] = dt_ab.strftime("%d/%m/%Y %H:%M")
         d["dias_aberto"] = (hoje - dt_ab.date()).days
         chamados.append(d)
+
+    # Rotas
+    rotas = []
+    for r in rows_rotas:
+        d = dict(r)
+        dt_rs = datetime.strptime(d["data_solicitacao"], "%Y-%m-%d %H:%M:%S")
+        d["data_solicitacao_br"] = dt_rs.strftime("%d/%m/%Y %H:%M")
+        label, css = mapear_prioridade(d.get("prioridade", ""))
+        d["prioridade_label"] = label
+        d["prioridade_css"] = css
+        rotas.append(d)
 
     # ===== Helpers para gerar CSV =====
     def csv_emprestimos():
@@ -1404,6 +1801,34 @@ def relatorio_emprestimo():
             )
         return si.getvalue()
 
+    def csv_rotas():
+        si = io.StringIO()
+        w = csv.writer(si, delimiter=";")
+        w.writerow(
+            [
+                "Data solicitação",
+                "Solicitante",
+                "Unidade de origem",
+                "Prioridade",
+                "Destino",
+                "Descrição do volume",
+                "Status",
+            ]
+        )
+        for r in rotas:
+            w.writerow(
+                [
+                    r["data_solicitacao_br"],
+                    r["solicitante"],
+                    r["unidade_origem"],
+                    r["prioridade_label"],
+                    r["destino"],
+                    r["descricao_volume"],
+                    r["status"],
+                ]
+            )
+        return si.getvalue()
+
     # =========================
     # EXPORT CSV / ZIP
     # =========================
@@ -1436,7 +1861,16 @@ def relatorio_emprestimo():
             ] = "attachment; filename=relatorio_chamados.csv"
             return resp
 
-        # Export TUDO (ZIP com 3 CSVs)
+        if export == "rotas":
+            csv_data = csv_rotas()
+            resp = make_response(csv_data)
+            resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+            resp.headers[
+                "Content-Disposition"
+            ] = "attachment; filename=relatorio_rotas.csv"
+            return resp
+
+        # Export TUDO (ZIP com 4 CSVs)
         if export == "all":
             mem_zip = io.BytesIO()
             with zipfile.ZipFile(mem_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -1451,6 +1885,10 @@ def relatorio_emprestimo():
                 zf.writestr(
                     "relatorio_chamados.csv",
                     csv_chamados().encode("utf-8-sig"),
+                )
+                zf.writestr(
+                    "relatorio_rotas.csv",
+                    csv_rotas().encode("utf-8-sig"),
                 )
 
             mem_zip.seek(0)
@@ -1467,139 +1905,15 @@ def relatorio_emprestimo():
         emprestimos=emprestimos,
         agendamentos=agendamentos,
         chamados=chamados,
+        rotas=rotas,
         data_inicio=data_inicio_str,
         data_fim=data_fim_str,
         setor=setor,
         status=status,
     )
+ 
 
-
-
-
-# ===================== MODO TV =====================
-
-@app.route("/tv")
-def tv_dashboard():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("SELECT COUNT(*) AS total FROM notebooks WHERE status = 'ativo'")
-    total_notebooks = cur.fetchone()["total"]
-
-    cur.execute(
-        """
-        SELECT
-            l.id,
-            n.serial,
-            n.modelo,
-            l.colaborador_nome,
-            l.colaborador_setor,
-            l.data_hora_emprestimo
-        FROM loans l
-        JOIN notebooks n ON n.id = l.notebook_id
-        WHERE l.status = 'emprestado'
-        ORDER BY l.data_hora_emprestimo DESC
-        """
-    )
-    rows_ativos = cur.fetchall()
-
-    emprestimos_ativos = []
-    for r in rows_ativos:
-        d = dict(r)
-        texto_limite, nivel_limite = calcular_tempo_limite(d["data_hora_emprestimo"])
-        d["tempo_limite"] = texto_limite
-        d["nivel_limite"] = nivel_limite
-        emprestimos_ativos.append(d)
-
-    total_emprestados = len(emprestimos_ativos)
-    disponiveis = total_notebooks - total_emprestados
-
-    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cur.execute(
-        """
-        SELECT
-            s.id,
-            n.serial,
-            n.modelo,
-            s.colaborador_nome,
-            s.colaborador_setor,
-            s.data_inicio,
-            s.data_fim,
-            s.inclui_som
-        FROM schedules s
-        JOIN notebooks n ON n.id = s.notebook_id
-        WHERE s.status = 'agendado'
-          AND s.data_fim >= ?
-        ORDER BY s.data_inicio
-        """,
-        (agora,),
-    )
-    rows_sched = cur.fetchall()
-    
-    proximos_agendamentos = []
-    hoje = datetime.now().date()
-    amanha = hoje + timedelta(days=1)
-
-    for r in rows_sched:
-        d = dict(r)
-        dt_i = datetime.strptime(d["data_inicio"], "%Y-%m-%d %H:%M:%S")
-        dt_f = datetime.strptime(d["data_fim"], "%Y-%m-%d %H:%M:%S")
-        d["data_inicio_br"] = dt_i.strftime("%d/%m/%Y %H:%M")
-        d["data_fim_br"] = dt_f.strftime("%d/%m/%Y %H:%M")
-
-        if dt_i.date() == hoje:
-            d["dia_label"] = "HOJE"
-            d["classe_dia"] = "hoje"
-        elif dt_i.date() == amanha:
-            d["dia_label"] = "AMANHÃ"
-            d["classe_dia"] = "amanha"
-        else:
-            d["dia_label"] = dt_i.strftime("%d/%m")
-            d["classe_dia"] = "futuro"
-
-        proximos_agendamentos.append(d)
-
-    cur.execute(
-        """
-        SELECT
-            id,
-            tipo_equipamento,
-            numero_serie,
-            empresa,
-            data_abertura,
-            status
-        FROM tickets
-        WHERE status = 'aberto'
-        ORDER BY data_abertura
-        """
-    )
-    rows_tickets = cur.fetchall()
-
-    chamados_abertos = []
-    for r in rows_tickets:
-        d = dict(r)
-        dt_ab = datetime.strptime(d["data_abertura"], "%Y-%m-%d %H:%M:%S")
-        d["data_abertura_br"] = dt_ab.strftime("%d/%m/%Y %H:%M")
-        dias = (hoje - dt_ab.date()).days
-        d["dias_aberto"] = dias
-        chamados_abertos.append(d)
-
-    conn.close()
-
-    
-    return render_template(
-        "tv.html",
-        body_class="tv-mode",
-        total_notebooks=total_notebooks,
-        total_emprestados=total_emprestados,
-        disponiveis=disponiveis,
-        emprestimos_ativos=emprestimos_ativos,
-        proximos_agendamentos=proximos_agendamentos,
-        chamados_abertos=chamados_abertos,
-
-    )
-
-        
+      
 if __name__ == "__main__":
     init_db()
     app.run(host="0.0.0.0", port=5000, debug=False)
