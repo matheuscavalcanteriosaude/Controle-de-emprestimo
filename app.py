@@ -15,6 +15,30 @@ from flask import (
 
 # - Constantes
 
+UNIDADES_ROTA = [
+    "CER Barra",
+    "Complexo Municipal Rocha Faria",
+    "CTI Pediátrico - Souza Aguiar",
+    "CTI Pediátrico - Jesus",
+    "UPA Costa Barros",
+    "UPA Rocha Miranda",
+    "UPA Madureira",
+    "UPA Cidade de Deus",
+    "UPA Engenho de Dentro",
+    "UPA Del Castilho",
+    "UPA Senador Camará",
+    "UPA Vila Kennedy",
+    "UPA Magalhães Bastos",
+    "UPA Sepetiba",
+    "UPA Paciência",
+    "UPA João XXIII",
+    "Hospital Municipal Ronaldo Gazolla",
+    "Hospital Maternidade da Rocinha",
+    "Hospital Federal do Andaraí",
+    "Sede Administrativa da RioSaúde",
+    "Outro",
+]
+
 APP_DB = "notebooks.db"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TERMOS_DIR = os.path.join(BASE_DIR, "termos")
@@ -344,7 +368,7 @@ def calcular_tempo_limite(data_hora_emprestimo_str: str):
 
 # Rotas DOP
 
-@app.route("/rotas")
+#@app.route("/rotas")#
 def lista_rotas():
     conn = get_connection()
     cur = conn.cursor()
@@ -380,21 +404,6 @@ def lista_rotas():
 
     return render_template("rotas.html", rotas=rotas)
 
-# Rotas enviadas
-
-@app.route("/rotas/enviar/<int:rota_id>", methods=["POST"])
-def marcar_rota_enviada(rota_id):
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE rotas SET status = 'enviada' WHERE id = ?",
-        (rota_id,),
-    )
-    conn.commit()
-    conn.close()
-
-    flash("Rota marcada como enviada.", "success")
-    return redirect(url_for("lista_rotas"))
 
 # Rotas DOP - Email
 
@@ -673,6 +682,102 @@ def visualizar_termo(loan_id):
     # abre o PDF diretamente no navegador (sem forçar download)
     return send_file(pdf_path, mimetype="application/pdf")
 
+# Rotas - manual
+
+@app.route("/rotas", methods=["GET", "POST"])
+def lista_rotas():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    if request.method == "POST":
+        solicitante = request.form.get("solicitante", "").strip()
+        unidade_origem = request.form.get("unidade_origem", "").strip()
+        prioridade = request.form.get("prioridade", "").strip()
+        destino = request.form.get("destino", "").strip()
+        descricao_volume = request.form.get("descricao_volume", "").strip()
+
+        if not (solicitante and unidade_origem and prioridade and destino and descricao_volume):
+            flash("Preencha todos os campos obrigatórios da rota.", "error")
+        else:
+            data_solicitacao = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cur.execute(
+                """
+                INSERT INTO rotas (
+                    data_solicitacao,
+                    solicitante,
+                    unidade_origem,
+                    prioridade,
+                    destino,
+                    descricao_volume,
+                    status
+                )
+                VALUES (?, ?, ?, ?, ?, ?, 'pendente')
+                """,
+                (
+                    data_solicitacao,
+                    solicitante,
+                    unidade_origem,
+                    prioridade,
+                    destino,
+                    descricao_volume,
+                ),
+            )
+            conn.commit()
+            flash("Rota cadastrada com sucesso.", "success")
+
+        return redirect(url_for("lista_rotas"))
+
+    # GET -> lista rotas
+    cur.execute(
+        """
+        SELECT
+            id,
+            data_solicitacao,
+            solicitante,
+            unidade_origem,
+            prioridade,
+            destino,
+            descricao_volume,
+            status
+        FROM rotas
+        ORDER BY data_solicitacao DESC
+        """
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    rotas = []
+    for r in rows:
+        d = dict(r)
+        dt = datetime.strptime(d["data_solicitacao"], "%Y-%m-%d %H:%M:%S")
+        d["data_solicitacao_br"] = dt.strftime("%d/%m/%Y %H:%M")
+
+        label, css = mapear_prioridade(d.get("prioridade", ""))
+        d["prioridade_label"] = label
+        d["prioridade_css"] = css
+
+        rotas.append(d)
+
+    return render_template(
+        "rotas.html",
+        rotas=rotas,
+        unidades=UNIDADES_ROTA,
+    )
+
+
+
+@app.route("/rotas/enviar/<int:rota_id>", methods=["POST"])
+def marcar_rota_enviada(rota_id):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE rotas SET status = 'enviada' WHERE id = ?",
+        (rota_id,),
+    )
+    conn.commit()
+    conn.close()
+    flash("Rota marcada como enviada.", "success")
+    return redirect(url_for("lista_rotas"))
 
 
 

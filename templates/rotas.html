@@ -2,10 +2,163 @@
 
 {% block extra_head %}
   <meta http-equiv="refresh" content="60">
+  <style>
+    /* --- layout do card do formulário --- */
+    .rotas-form-card {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 24px 24px 20px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+      margin-bottom: 24px;
+    }
+
+    .rotas-form-title {
+      margin: 0 0 16px;
+      font-size: 18px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    /* grid parecido com o de chamados */
+    .rotas-form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px 24px;
+    }
+
+    .rotas-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .rotas-field label {
+      font-size: 14px;
+      font-weight: 500;
+      color: #4b5563;
+    }
+
+    .rotas-field input,
+    .rotas-field select,
+    .rotas-field textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid #d1d5db;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      background: #f9fafb;
+    }
+
+    .rotas-field input:focus,
+    .rotas-field select:focus,
+    .rotas-field textarea:focus {
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.4);
+      background: #ffffff;
+    }
+
+    .rotas-field textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .rotas-actions {
+      margin-top: 16px;
+      display: flex;
+      gap: 8px;
+    }
+
+    /* se você já tiver .btn-primary global, pode remover este bloco */
+    .btn-primary {
+      border: none;
+      background: #4f46e5;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 8px 18px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s, transform 0.05s;
+    }
+
+    .btn-primary:hover {
+      background: #4338ca;
+      box-shadow: 0 8px 16px rgba(79, 70, 229, 0.35);
+    }
+
+    .btn-primary:active {
+      transform: translateY(1px);
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25);
+    }
+
+    /* só pra dar um respiro do título “Rotas solicitadas” */
+    h2 {
+      margin-bottom: 18px;
+    }
+  </style>
 {% endblock %}
 
 {% block content %}
 <h2>Rotas solicitadas</h2>
+
+<div class="rotas-form-card">
+  <h3 class="rotas-form-title">Nova rota</h3>
+
+  <form method="post">
+    <div class="rotas-form-grid">
+      <div class="rotas-field">
+        <label for="solicitante">Solicitante *</label>
+        <input type="text" id="solicitante" name="solicitante" required>
+      </div>
+
+      <div class="rotas-field">
+        <label for="unidade_origem">Unidade / Setor de origem *</label>
+        <select id="unidade_origem" name="unidade_origem" required>
+          <option value="">Selecione...</option>
+          {% for u in unidades %}
+            <option value="{{ u }}">{{ u }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="rotas-field">
+        <label for="prioridade">Prioridade *</label>
+        <select id="prioridade" name="prioridade" required>
+          <option value="">Selecione...</option>
+          <option value="Imediata (Após 12h somente será aceita se autorizada pelo gestor do contrato)">Imediata</option>
+          <option value="Alta (Realizada em até 24 horas)">Alta</option>
+          <option value="Média (Realizada entre 24 e 72 horas)">Média</option>
+          <option value="Baixa (Realizada a partir de 72 horas)">Baixa</option>
+        </select>
+      </div>
+
+      <div class="rotas-field">
+        <label for="destino">Destino *</label>
+        <select id="destino" name="destino" required>
+          <option value="">Selecione...</option>
+          {% for u in unidades %}
+            <option value="{{ u }}">{{ u }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="rotas-field" style="grid-column: 1 / -1;">
+        <label for="descricao_volume">Descrição do volume *</label>
+        <textarea id="descricao_volume" name="descricao_volume" rows="3" required></textarea>
+      </div>
+    </div>
+
+    <div class="rotas-actions">
+      <button type="submit" class="btn-primary">Salvar rota</button>
+    </div>
+  </form>
+</div>
+
+<div class="section-header">
+  <h3>Rotas cadastradas</h3>
+</div>
 
 <div class="table-card">
   <div class="table-wrapper">
@@ -26,8 +179,8 @@
             <tr>
               <td>{{ rota.data_solicitacao_br }}</td>
               <td>
-                {{ rota.solicitante }}<br>
-                <span class="tv-sub">{{ rota.unidade_origem }}</span>
+                {{ rota.solicitante }}
+                <br><span class="tv-sub">{{ rota.unidade_origem }}</span>
               </td>
               <td>
                 <span class="badge-prioridade {{ rota.prioridade_css }}">
@@ -37,15 +190,12 @@
               <td>{{ rota.destino }}</td>
               <td>{{ rota.descricao_volume }}</td>
               <td>
-                {% if rota.status == 'pendente' %}
-                  <form method="post"
-                        action="{{ url_for('marcar_rota_enviada', rota_id=rota.id) }}">
-                    <button type="submit" class="btn-small">
-                      Marcar como enviada
-                    </button>
-                  </form>
+                {% if rota.status == 'enviada' %}
+                  <span class="badge-som">Enviada</span>
                 {% else %}
-                  <span class="tag tag-success">Enviada</span>
+                  <form action="{{ url_for('marcar_rota_enviada', rota_id=rota.id) }}" method="post">
+                    <button class="btn-small" type="submit">Marcar como enviada</button>
+                  </form>
                 {% endif %}
               </td>
             </tr>
@@ -56,7 +206,7 @@
       <table>
         <tbody>
           <tr>
-            <td>Nenhuma rota cadastrada recentemente.</td>
+            <td>Nenhuma rota cadastrada ainda.</td>
           </tr>
         </tbody>
       </table>

@@ -101,54 +101,54 @@ def get_email_body(msg) -> str:
 
 def extrair_descricao_volume(body: str) -> str:
     """
-    Pega a resposta do campo 'Descrição do Volume *'.
+    Extrai a resposta do campo 'Descrição do Volume *' do texto do e-mail.
 
-    Estrutura no e-mail:
+    Estrutura típica no e-mail:
+
     Descrição do Volume *
-    Descreva detalhadamente o que está sendo enviado (...)
-    
-    <LINHAS DA RESPOSTA DO USUÁRIO>
+    Descreva detalhadamente o que está sendo enviado (ex: Dipirona, ampola - 200
+    unidades)
+
+    Pulseiras de identificação de paciente
     """
-    # divide em linhas já sem quebras estranhas
+
     linhas = [l.strip() for l in body.splitlines()]
 
-    idx = None
+    # 1) Acha a linha "Descrição do Volume *"
+    idx_label = None
     for i, linha in enumerate(linhas):
-        # procura a linha do título do campo
         if linha.startswith("Descrição do Volume"):
-            idx = i
+            idx_label = i
             break
 
-    if idx is None:
+    if idx_label is None:
         return ""
 
-    # pula: linhas vazias + linha de instrução
-    j = idx + 1
-    while j < len(linhas):
-        t = linhas[j].strip()
+    j = idx_label + 1
 
-        # ignora vazias
-        if not t:
+    # 2) Pula linhas vazias logo após o título
+    while j < len(linhas) and not linhas[j]:
+        j += 1
+
+    # 3) Se a próxima linha for a de instrução ("Descreva detalhadamente..."),
+    #    pula TODA a instrução (que pode ocupar várias linhas) até uma linha vazia
+    if j < len(linhas) and linhas[j].startswith("Descreva detalhadamente"):
+        j += 1
+        # ainda parte da instrução (ex.: "unidades)")
+        while j < len(linhas) and linhas[j]:
             j += 1
-            continue
-
-        # ignora a frase de instrução
-        if t.startswith("Descreva detalhadamente"):
+        # agora pula linhas vazias depois da instrução
+        while j < len(linhas) and not linhas[j]:
             j += 1
-            continue
 
-        # achamos o começo da descrição real
-        break
-
-    # agora junta todas as linhas até a próxima seção / linha vazia
+    # 4) A partir daqui, são as linhas da resposta do usuário.
     descr_linhas = []
     while j < len(linhas):
         t = linhas[j].strip()
 
+        # fim da descrição: linha vazia ou início de outra seção
         if not t:
-            break  # fim do texto do usuário
-
-        # se começar uma nova seção, para
+            break
         if t.startswith("Em caso de rota tipo"):
             break
 
@@ -156,7 +156,6 @@ def extrair_descricao_volume(body: str) -> str:
         j += 1
 
     return " ".join(descr_linhas).strip()
-
 
 
 
