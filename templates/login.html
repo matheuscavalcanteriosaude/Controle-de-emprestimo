@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Login - Service Desk</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; height: 100vh; background: #f3f4f6; }
+    .login-box { background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+    .login-box img { width: 180px; margin-bottom: 20px; }
+    .login-box input { margin-bottom: 15px; }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <img src="{{ url_for('static', filename='img/logo-rio-saude-horizontal.png') }}" alt="Logo">
+    <h3>Controle de Atividades</h3>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, msg in messages %}
+          <div class="msg {{ category }}">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="post" class="form-card" style="box-shadow: none; padding: 0;">
+      <label for="username" style="text-align: left;">Usuário</label>
+      <input type="text" id="username" name="username" required autocomplete="off">
+      
+      <label for="password" style="text-align: left;">Senha</label>
+      <input type="password" id="password" name="password" required>
+      
+      <button type="submit" class="btn-primary" style="width: 100%;">Entrar</button>
+    </form>
+  </div>
+</body>
+</html>

@@ -3,13 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <title>{{ title or "Controle de Atividades - Service Desk" }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-
+  
   <!-- Favicon -->
-  <link rel="icon" type="image/png"
-        href="{{ url_for('static', filename='img/favicon.png') }}">
-  <link rel="shortcut icon" type="image/png"
-        href="{{ url_for('static', filename='img/favicon.png') }}">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+  <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
 
   <!-- Fonte mais moderna -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,67 +18,105 @@
   {% block extra_head %}{% endblock %}
 </head>
 <body class="{{ body_class|default('') }}">
-<header>
-  <div class="header-inner">
-    <div class="logo">
-      <!-- Logo horizontal -->
-      <img
-        src="{{ url_for('static', filename='img/logo-rio-saude-horizontal.png') }}"
-        alt="Prefeitura do Rio - Saúde"
-        class="logo-img"
-      />
-      <span class="logo-system-name">Controle de Atividades - Service Desk</span>
-    </div>
 
-    {%if body_class != 'tv-mode'%}
-<nav class="top-nav">
-      <a href="{{ url_for('dashboard') }}"
-         class="nav-link {% if request.endpoint == 'dashboard' %}is-active{% endif %}">
-        Dashboard
-      </a>
-      <a href="{{ url_for('agendamentos') }}"
-         class="nav-link {% if request.endpoint == 'agendamentos' %}is-active{% endif %}">
-        Agendamentos
-      </a>
-      <a href="{{ url_for('emprestimo') }}"
-         class="nav-link {% if request.endpoint == 'emprestimo' %}is-active{% endif %}">
-        Novo Empréstimo
-      </a>    
-      <a href="{{ url_for('lista_chamados') }}"
-         class="nav-link {% if 'chamado' in request.endpoint %}is-active{% endif %}">
-        Chamados
-      </a>
-      <a href="{{ url_for('lista_rotas') }}"
-         class="nav-link {% if request.endpoint == 'lista_rotas' %}is-active{% endif %}">
-        Rotas
-      </a>
-      <a href="{{ url_for('relatorio_emprestimo') }}"
-         class="nav-link {% if request.endpoint == 'relatorio_emprestimo' %}is-active{% endif %}">
-        Relatórios
-      </a>      
-    </nav>
-    {% endif %}
+<!-- NOVO CABEÇALHO: DUAS FITAS -->
+<header class="site-header">
+  
+<!-- Fita 1: Branding e Informações do Usuário (Fundo Preto) -->
+  <div class="header-top">
+    <div class="header-inner">
+      <!-- Lado Esquerdo: Logo e Nome -->
+      <div class="logo">
+        <img
+          src="{{ url_for('static', filename='img/logo-rio-saude-horizontal.png') }}"
+          alt="Prefeitura do Rio - Saúde"
+          class="logo-img"
+        />
+        <span class="logo-system-name">Controle de Atividades - Service Desk</span>
+      </div>
+      
+      <!-- Lado Direito: Perfil do Usuário -->
+      <div class="user-profile">
+        {% if session.get('user_id') %}
+            <span class="user-name">{{ session.get('user_nome') }} ({{ session.get('user_role')|title }})</span>
+            <a href="{{ url_for('logout') }}" class="btn-logout">Sair</a>
+        {% endif %}
+      </div>
+    </div>
   </div>
+
+<!-- Fita 2: Navegação Principal (Fundo Branco/Cinza) -->
+  {% if body_class != 'tv-mode' and session.get('user_id') %} 
+  <div class="header-bottom">
+    <div class="header-inner">
+      <nav class="top-nav">
+        <!-- VISÍVEL PARA TODOS -->
+        <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}is-active{% endif %}">
+          <span class="nav-icon">📊</span> Dashboard
+        </a>
+        <a href="{{ url_for('agendamentos') }}" class="nav-link {% if request.endpoint == 'agendamentos' %}is-active{% endif %}">
+          <span class="nav-icon">📅</span> Agendamentos
+        </a>
+        <a href="{{ url_for('emprestimo') }}" class="nav-link {% if request.endpoint == 'emprestimo' %}is-active{% endif %}">
+          <span class="nav-icon">💻</span> Novo Empréstimo
+        </a>
+
+        <!-- VISÍVEL APENAS PARA ADMIN, SUPERVISOR E TÉCNICO -->
+        {% if session.get('user_role') in ['admin', 'supervisor', 'tecnico'] %}
+        <a href="{{ url_for('novo_notebook') }}" class="nav-link {% if request.endpoint == 'novo_notebook' %}is-active{% endif %}">
+          <span class="nav-icon">📦</span> Estoque & Fixos
+        </a>
+        {% endif %}
+
+        <!-- VISÍVEL PARA TODOS -->
+        <a href="{{ url_for('lista_chamados') }}" class="nav-link {% if 'chamado' in request.endpoint %}is-active{% endif %}">
+          <span class="nav-icon">🔧</span> Chamados
+        </a>
+        <a href="{{ url_for('lista_rotas') }}" class="nav-link {% if request.endpoint == 'lista_rotas' %}is-active{% endif %}">
+          <span class="nav-icon">🚗</span> Rotas
+        </a>
+
+        <!-- VISÍVEL APENAS PARA ADMIN, SUPERVISOR E TÉCNICO -->
+        {% if session.get('user_role') in ['admin', 'supervisor', 'tecnico'] %}
+        <a href="{{ url_for('relatorio_emprestimo') }}" class="nav-link {% if request.endpoint == 'relatorio_emprestimo' %}is-active{% endif %}">
+          <span class="nav-icon">📑</span> Relatórios
+        </a>
+        {% endif %}
+
+        <!-- VISÍVEL APENAS PARA ADMIN E SUPERVISOR -->
+        {% if session.get('user_role') in ['admin', 'supervisor'] %}
+        <a href="{{ url_for('gerenciar_usuarios') }}" class="nav-link {% if request.endpoint == 'gerenciar_usuarios' %}is-active{% endif %}">
+          <span class="nav-icon">⚙️</span> Usuários
+        </a>
+        {% endif %}
+      </nav>
+    </div>
+  </div>
+  {% endif %}
 </header>
 
-  <main>
-    <div class="container">
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          <div class="messages">
-            {% for category, msg in messages %}
-              <div class="msg {{ category }}">{{ msg }}</div>
-            {% endfor %}
-          </div>
-        {% endif %}
-      {% endwith %}
+<main>
+  <div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="messages">
+          {% for category, msg in messages %}
+            <div class="msg {{ category }}">{{ msg }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
 
-      {% block content %}{% endblock %}
-    </div>
-  </main>
+    {% block content %}{% endblock %}
+  </div>
+</main>
 
-  <footer>
+<footer class="site-footer">
+  <div class="footer-inner">
     <small>DGOVI - Suporte em TI &mdash; Controle de Atividades</small>
-  </footer>
+    <small class="version-tag">Versão 1.2</small>
+  </div>
+</footer>
+
 </body>
 </html>

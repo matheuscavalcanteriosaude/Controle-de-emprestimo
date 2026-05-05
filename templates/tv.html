@@ -1,221 +1,334 @@
 {% extends "base.html" %}
+
 {% block extra_head %}
   <!-- Atualiza a página a cada 30 segundos -->
   <meta http-equiv="refresh" content="30">
+  
+  <style>
+    /* ========== CSS EXCLUSIVO PARA O MODO TV ========== */
+    /* Esconde as barras de rolagem para dar cara de painel nativo */
+    ::-webkit-scrollbar {
+      display: none;
+    }
+    
+    .tv-mode main {
+      padding-top: 0;
+      max-width: 100%;
+      padding: 20px 40px;
+    }
+
+    /* Cabeçalho do Painel com Relógio */
+    .tv-header-panel {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 3px solid #e5e7eb;
+    }
+    .tv-header-panel h2 {
+      font-size: 2.2rem;
+      margin: 0;
+      color: #1f2937;
+      font-weight: 600;
+    }
+    .tv-clock {
+      font-size: 2.8rem;
+      font-weight: 700;
+      color: #4f46e5;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Aumentando os KPIs para a TV */
+    .tv-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      margin-bottom: 25px;
+    }
+    .tv-kpi-card {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 20px;
+      border-left: 6px solid #4f46e5;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    }
+    .tv-kpi-card.warning { border-left-color: #dc2626; }
+    .tv-kpi-card.success { border-left-color: #059669; }
+    
+    .tv-kpi-label {
+      font-size: 1.2rem;
+      color: #6b7280;
+      margin: 0 0 5px 0;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .tv-kpi-value {
+      font-size: 3.5rem;
+      font-weight: 700;
+      color: #111827;
+      margin: 0;
+      line-height: 1;
+    }
+
+    /* Layout em 2 colunas gigantes */
+    .tv-layout {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 30px;
+    }
+
+    /* Ajuste das tabelas para leitura de longe */
+    .tv-section-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: baseline;
+      gap: 15px;
+    }
+    .tv-section-sub {
+      font-size: 1.1rem;
+      color: #ef4444;
+      font-weight: 500;
+    }
+    
+    .tv-table-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+      padding: 15px;
+      margin-bottom: 25px;
+    }
+    
+    .tv-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .tv-table th {
+      font-size: 1.2rem;
+      background: #f8fafc;
+      padding: 14px;
+      text-align: left;
+      color: #475569;
+    }
+    .tv-table td {
+      font-size: 1.25rem;
+      padding: 14px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #1e293b;
+    }
+    .tv-table tr:last-child td { border-bottom: none; }
+    
+    .tv-subtext {
+      display: block;
+      font-size: 1.05rem;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    /* Aumentando Badges para TV */
+    .tv-badge {
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: inline-block;
+    }
+  </style>
 {% endblock %}
-{% block title %}Painel de Empréstimos e Agendamentos{% endblock %}
+
+{% block title %}Painel de Operações - Service Desk{% endblock %}
 
 {% block content %}
-<h2>Painel de Empréstimos e Agendamentos</h2>
+<div class="tv-header-panel">
+  <h2>Painel de Operações - TI</h2>
+  <!-- Relógio Dinâmico -->
+  <div class="tv-clock" id="clock">00:00:00</div>
+</div>
 
 <!-- KPIs do topo -->
-<div class="kpi-grid">
-  <div class="kpi-card">
-    <p class="kpi-label">Total de Notebooks</p>
-    <p class="kpi-value">{{ total_notebooks }}</p>
+<div class="tv-kpi-grid">
+  <div class="tv-kpi-card">
+    <p class="tv-kpi-label">Estoque (Ativos)</p>
+    <p class="tv-kpi-value">{{ total_notebooks }}</p>
   </div>
-  <div class="kpi-card">
-    <p class="kpi-label">Emprestados</p>
-    <p class="kpi-value">{{ total_emprestados }}</p>
+  <div class="tv-kpi-card">
+    <p class="tv-kpi-label">Emprestados</p>
+    <p class="tv-kpi-value" style="color: #d97706;">{{ total_emprestados }}</p>
   </div>
-  <div class="kpi-card">
-    <p class="kpi-label">Disponíveis</p>
-    <p class="kpi-value">{{ disponiveis }}</p>
+  <div class="tv-kpi-card success">
+    <p class="tv-kpi-label">Disponíveis</p>
+    <p class="tv-kpi-value" style="color: #059669;">{{ disponiveis }}</p>
   </div>
-  <div class="kpi-card">
-    <p class="kpi-label">Chamados em aberto</p>
-    <p class="kpi-value">{{ chamados_abertos | length }}</p>
+  <div class="tv-kpi-card warning">
+    <p class="tv-kpi-label">Chamados Abertos</p>
+    <p class="tv-kpi-value" style="color: #dc2626;">{{ chamados_abertos | length }}</p>
   </div>
 </div>
 
 <!-- LAYOUT EM 2 COLUNAS -->
-<div class="tv-layout-main">
+<div class="tv-layout">
+  
   <!-- COLUNA ESQUERDA: Empréstimos + Chamados -->
-  <div class="tv-col-left">
+  <div>
     <!-- Empréstimos Ativos -->
-    <div>
-      <div class="section-header">
-        <h3>Empréstimos Ativos</h3>
-        <span class="section-sub">Limite diário de devolução até 18h</span>
-      </div>
-
-      <div class="table-card">
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Nº Série</th>
-                <th>Colaborador</th>
-                <th>Setor</th>
-                <th>Empréstimo</th>
-                <th>Limite</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for e in emprestimos_ativos %}
-                <tr>
-                  <td>{{ e.serial }}</td>
-                  <td>{{ e.colaborador_nome }}</td>
-                  <td>{{ e.colaborador_setor }}</td>
-                  <td>{{ e.data_hora_emprestimo }}</td>
-                  <td>
-                    <span class="deadline-badge {{ e.nivel_limite }}">
-                      {{ e.tempo_limite }}
-                    </span>
-                  </td>
-                </tr>
-              {% endfor %}
-              {% if emprestimos_ativos|length == 0 %}
-                <tr>
-                  <td colspan="5">Nenhum notebook emprestado no momento.</td>
-                </tr>
-              {% endif %}
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <div class="tv-section-title">
+      <span style="color: #d97706;">Empréstimos Rotativos</span>
+      <span class="tv-section-sub">⚠️ Devolução limite 18h</span>
+    </div>
+    <div class="tv-table-card" style="border-left: 5px solid #f59e0b;">
+      <table class="tv-table">
+        <thead>
+          <tr>
+            <th>Equipamento</th>
+            <th>Colaborador / Setor</th>
+            <th>Limite</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in emprestimos_ativos %}
+            <tr>
+              <td>
+                <strong>{{ e.serial }}</strong>
+                <span class="tv-subtext">{{ e.data_hora_emprestimo }}</span>
+              </td>
+              <td>
+                <strong>{{ e.colaborador_nome }}</strong>
+                <span class="tv-subtext">{{ e.colaborador_setor or '-' }}</span>
+              </td>
+              <td>
+                <span class="tv-badge deadline-badge {{ e.nivel_limite }}">
+                  {{ e.tempo_limite }}
+                </span>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="3" style="text-align: center;">Nenhum notebook rotativo emprestado.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
 
-    <!-- Chamados em aberto (logo abaixo de Empréstimos Ativos) -->
-    <div>
-      <div class="section-header" style="margin-top: 24px;">
-        <h3>Chamados em aberto</h3>
-      </div>
-
-      <div class="table-card">
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Equipamento / Nº de série</th>
-                <th>Empresa</th>
-                <th>Status</th>
-                <th>Dias em aberto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for c in chamados_abertos %}
-                <tr>
-                  <td>
-                    {{ c.tipo_equipamento or '-' }}
-                    {% if c.numero_serie %}
-                      — {{ c.numero_serie }}
-                    {% endif %}
-                  </td>
-                  <td>{{ c.empresa or '-' }}</td>
-                  <td>Em aberto</td>
-                  <td>{{ c.dias_aberto }} dia{% if c.dias_aberto != 1 %}s{% endif %}</td>
-                </tr>
-              {% endfor %}
-              {% if chamados_abertos|length == 0 %}
-                <tr>
-                  <td colspan="4">Nenhum chamado aberto no momento.</td>
-                </tr>
-              {% endif %}
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <!-- Chamados em aberto -->
+    <div class="tv-section-title">
+      <span style="color: #dc2626;">Chamados em Aberto</span>
+    </div>
+    <div class="tv-table-card" style="border-left: 5px solid #dc2626;">
+      <table class="tv-table">
+        <thead>
+          <tr>
+            <th>Equipamento</th>
+            <th>Empresa</th>
+            <th>Em Aberto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in chamados_abertos %}
+            <tr>
+              <td>
+                <strong>{{ c.tipo_equipamento or '-' }}</strong>
+                <span class="tv-subtext">S/N: {{ c.numero_serie or '-' }}</span>
+              </td>
+              <td>{{ c.empresa or '-' }}</td>
+              <td style="color: #dc2626; font-weight: 700;">{{ c.dias_aberto }} dia(s)</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="3" style="text-align: center;">Nenhum chamado aberto.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
 
   <!-- COLUNA DIREITA: Agendamentos + Rotas -->
-  <div class="tv-col-right">
+  <div>
     <!-- Agendamentos -->
-    <div class="section-header">
-      <h3>Agendamentos</h3>
-      <span class="section-sub">Destaque para os agendamentos de hoje</span>
+    <div class="tv-section-title">
+      <span style="color: #4f46e5;">Próximos Agendamentos</span>
     </div>
-
-    <div class="table-card">
-      <div class="table-wrapper">
-        <table>
-          <thead>
-            <tr>
-              <th>Colaborador</th>
-              <th>Início</th>
-              <th>Fim</th>
-              <th>Som</th>
+    <div class="tv-table-card" style="border-left: 5px solid #4f46e5;">
+      <table class="tv-table">
+        <thead>
+          <tr>
+            <th>Colaborador</th>
+            <th>Início</th>
+            <th>Fim</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in proximos_agendamentos %}
+            <tr style="{% if a.dia_label == 'HOJE' %}background-color: #fef3c7;{% endif %}">
+              <td>
+                <strong>{{ a.colaborador_nome }}</strong>
+                {% if a.dia_label == 'HOJE' %}
+                  <span class="tv-badge badge-hoje" style="margin-left: 10px;">HOJE</span>
+                {% elif a.dia_label == 'AMANHÃ' %}
+                  <span class="tv-badge badge-amanha" style="margin-left: 10px;">AMANHÃ</span>
+                {% endif %}
+                {% if a.inclui_som %}<span title="Com Som">🔊</span>{% endif %}
+                <span class="tv-subtext">{{ a.colaborador_setor or '-' }}</span>
+              </td>
+              <td>{{ a.data_inicio_br }}</td>
+              <td>{{ a.data_fim_br }}</td>
             </tr>
-          </thead>
-          <tbody>
-            {% for a in proximos_agendamentos %}
-              <tr class="tv-ag-{{ a.classe_dia }}">
-                <td>
-                  {{ a.colaborador_nome }}
-                  {% if a.colaborador_setor %}
-                    <br><span class="tv-sub">{{ a.colaborador_setor }}</span>
-                  {% endif %}
-                  {% if a.dia_label == 'HOJE' %}
-                    <span class="badge-dia badge-hoje">HOJE</span>
-                  {% elif a.dia_label == 'AMANHÃ' %}
-                    <span class="badge-dia badge-amanha">AMANHÃ</span>
-                  {% endif %}
-                </td>
-                <td>{{ a.data_inicio_br }}</td>
-                <td>{{ a.data_fim_br }}</td>
-                <td>
-                  {% if a.inclui_som %}
-                    <span class="badge-som">Com som</span>
-                  {% else %}
-                    <span class="badge-som badge-som-off">Sem som</span>
-                  {% endif %}
-                </td>
-              </tr>
-            {% endfor %}
-            {% if proximos_agendamentos|length == 0 %}
-              <tr>
-                <td colspan="4">Nenhum agendamento futuro cadastrado.</td>
-              </tr>
-            {% endif %}
-          </tbody>
-        </table>
-      </div>
+          {% else %}
+            <tr><td colspan="3" style="text-align: center;">Nenhum agendamento futuro.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
 
     <!-- Rotas solicitadas -->
-    <div>
-      <div class="section-header" style="margin-top: 24px;">
-        <h3>Rotas solicitadas</h3>
-      </div>
-
-      <div class="table-card">
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Solicitante / Unidade</th>
-                <th>Prioridade</th>
-                <th>Destino</th>
-                <th>Data</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for rota in rotas_tv %}
-                <tr>
-                  <td>
-                    {{ rota.solicitante }}
-                    <br><span class="tv-sub">{{ rota.unidade_origem }}</span>
-                  </td>
-                  <td>
-                    <span class="badge-prioridade {{ rota.prioridade_css }}">
-                      {{ rota.prioridade_label }}
-                    </span>
-                  </td>
-                  <td>{{ rota.destino }}</td>
-                  <td>{{ rota.data_solicitacao_br }}</td>
-                </tr>
-              {% endfor %}
-              {% if rotas_tv|length == 0 %}
-                <tr>
-                  <td colspan="4">Nenhuma rota recente cadastrada.</td>
-                </tr>
-              {% endif %}
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <div class="tv-section-title">
+      <span style="color: #059669;">Rotas Solicitadas (DOP)</span>
+    </div>
+    <div class="tv-table-card" style="border-left: 5px solid #059669;">
+      <table class="tv-table">
+        <thead>
+          <tr>
+            <th>Solicitante / Unidade</th>
+            <th>Destino / Prioridade</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rota in rotas_tv %}
+            <tr>
+              <td>
+                <strong>{{ rota.solicitante }}</strong>
+                <span class="tv-subtext">{{ rota.unidade_origem }}</span>
+              </td>
+              <td>
+                <strong>{{ rota.destino }}</strong>
+                <div style="margin-top: 5px;">
+                  <span class="tv-badge badge-prioridade {{ rota.prioridade_css }}">
+                    {{ rota.prioridade_label }}
+                  </span>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="2" style="text-align: center;">Nenhuma rota recente.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
+
 </div>
+
+<!-- SCRIPT DO RELÓGIO DA TV -->
+<script>
+  function updateClock() {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    document.getElementById('clock').textContent = hours + ':' + minutes + ':' + seconds;
+  }
+  
+  // Atualiza a cada segundo
+  setInterval(updateClock, 1000);
+  updateClock(); // Chama imediatamente ao carregar
+</script>
 {% endblock %}

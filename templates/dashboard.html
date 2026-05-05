@@ -3,14 +3,36 @@
 {% block extra_head %}
   <!-- Atualiza a página a cada 30 segundos -->
   <meta http-equiv="refresh" content="30">
+  
+  <!-- Estilos exclusivos para organizar o Grid do Dashboard -->
+  <style>
+    .dash-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 10px;
+      align-items: start;
+    }
+    .dash-col {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    @media (max-width: 1024px) {
+      .dash-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 {% endblock %}
 
 {% block content %}
-<h2>Dashboard</h2>
+<h2>Visão Geral - Dashboard</h2>
 
+<!-- KPIs -->
 <div class="cards">
   <div class="card">
-    <span class="card-label">Total de Notebooks</span>
+    <span class="card-label">Estoque (Ativos)</span>
     <span class="card-value">{{ total_notebooks }}</span>
   </div>
   <div class="card">
@@ -19,26 +41,25 @@
   </div>
   <div class="card">
     <span class="card-label">Disponíveis</span>
-    <span class="card-value">{{ disponiveis }}</span>
+    <span class="card-value" style="color: #047857;">{{ disponiveis }}</span>
   </div>
   <div class="card">
-    <span class="card-label">Chamados em aberto</span>
-    <span class="card-value">{{ total_chamados_abertos }}</span>
+    <span class="card-label">Chamados em Aberto</span>
+    <span class="card-value" style="color: #b91c1c;">{{ total_chamados_abertos }}</span>
   </div>
 </div>
 
-<div class="section-header">
-  <h3>Empréstimos Ativos</h3>
-  <span class="section-subtitle">Limite diário de devolução até 18h</span>
+<!-- EMPRÉSTIMOS ATIVOS (Largura Total - Prioridade Alta) -->
+<div class="section-header" style="margin-top: 20px;">
+  <h3>Empréstimos Rotativos Ativos</h3>
+  <span class="section-subtitle" style="color: #b91c1c; font-weight: bold;">⚠️ Limite diário de devolução até 18h</span>
 </div>
-
-<div class="table-card">
+<div class="table-card" style="border-left: 4px solid #f59e0b;">
   <div class="table-wrapper">
     <table>
       <thead>
         <tr>
           <th>Nº Série</th>
-          <th>Modelo</th>
           <th>Colaborador</th>
           <th>Setor</th>
           <th>Data/Hora Empréstimo</th>
@@ -50,8 +71,7 @@
         {% if emprestimos_ativos %}
           {% for e in emprestimos_ativos %}
             <tr>
-              <td>{{ e.serial }}</td>
-              <td>{{ e.modelo or "-" }}</td>
+              <td><strong>{{ e.serial }}</strong><br><small style="color: #718096;">{{ e.modelo or "-" }}</small></td>
               <td>{{ e.colaborador_nome }}</td>
               <td>{{ e.colaborador_setor or "-" }}</td>
               <td>{{ e.data_hora_emprestimo }}</td>
@@ -61,13 +81,15 @@
                 </span>
               </td>
               <td class="td-acoes">
-                <a href="{{ url_for('devolver', loan_id=e.id) }}" class="btn-small">Devolver</a>
+                <form action="{{ url_for('devolver', loan_id=e.id) }}" method="get" onsubmit="return confirm('Confirmar devolução deste notebook ao estoque?');">
+                    <button type="submit" class="btn-small btn-success">Receber</button>
+                </form>
               </td>
             </tr>
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="7">Nenhum notebook emprestado no momento.</td>
+            <td colspan="6" style="text-align: center; color: #6b7280;">Nenhum notebook emprestado no momento.</td>
           </tr>
         {% endif %}
       </tbody>
@@ -75,177 +97,160 @@
   </div>
 </div>
 
-<div class="section-header">
-  <h3>Histórico recente (últimos 10 lançamentos)</h3>
-</div>
+<!-- GRID LADO A LADO PARA O RESTANTE DAS INFORMAÇÕES -->
+<div class="dash-grid">
+  
+  <!-- COLUNA DA ESQUERDA -->
+  <div class="dash-col">
+    
+    <!-- Agendamentos -->
+    <div>
+      <div class="section-header" style="margin-top: 10px;">
+        <h3 style="color: #4f46e5;">Próximos Agendamentos</h3>
+      </div>
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Colaborador</th>
+                <th>Início</th>
+                <th>Fim</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if proximos_agendamentos %}
+                {% for a in proximos_agendamentos %}
+                  <tr class="{% if a.eh_hoje %}row-hoje{% endif %}">
+                    <td>
+                        {{ a.colaborador_nome }} 
+                        {% if a.inclui_som %}<span class="badge-som" title="Com Som">🔊</span>{% endif %}
+                        <br><small style="color: #718096;">{{ a.colaborador_setor or "-" }}</small>
+                    </td>
+                    <td>{{ a.data_inicio_br }}</td>
+                    <td>{{ a.data_fim_br }}</td>
+                  </tr>
+                {% endfor %}
+              {% else %}
+                <tr>
+                  <td colspan="3" style="text-align: center;">Nenhum agendamento futuro.</td>
+                </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
-<div class="table-card">
-  <div class="table-wrapper">
-    <table>
-      <thead>
-        <tr>
-          <th>Nº Série</th>
-          <th>Modelo</th>
-          <th>Colaborador</th>
-          <th>Setor</th>
-          <th>Empréstimo</th>
-          <th>Devolução</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for h in historico %}
-          <tr>
-            <td>{{ h.serial }}</td>
-            <td>{{ h.modelo or "-" }}</td>
-            <td>{{ h.colaborador_nome }}</td>
-            <td>{{ h.colaborador_setor or "-" }}</td>
-            <td>{{ h.data_hora_emprestimo }}</td>
-            <td>{{ h.data_hora_devolucao or "-" }}</td>
-            <td>{{ h.status }}</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+    <!-- Rotas -->
+    <div>
+      <div class="section-header" style="margin-top: 10px;">
+        <h3 style="color: #059669;">Rotas Solicitadas (DOP)</h3>
+      </div>
+      <div class="table-card">
+        <div class="table-wrapper">
+          {% if rotas_dashboard %}
+            <table>
+              <thead>
+                <tr>
+                  <th>Solicitante / Origem</th>
+                  <th>Destino / Volume</th>
+                  <th>Prioridade</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for rota in rotas_dashboard %}
+                  <tr>
+                    <td>{{ rota.solicitante }}<br><small style="color: #718096;">{{ rota.unidade_origem }}</small></td>
+                    <td>{{ rota.destino }}<br><small style="color: #718096;">{{ rota.descricao_volume }}</small></td>
+                    <td>
+                      <span class="badge-prioridade {{ rota.prioridade_css }}">{{ rota.prioridade_label }}</span>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p style="text-align: center; font-size: 13px; color: #6b7280; padding: 10px;">Nenhuma rota pendente.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
 
-<div class="section-header">
-  <h3>Próximos agendamentos</h3>
-</div>
+  </div> <!-- Fim Coluna Esquerda -->
 
-<div class="table-card">
-  <div class="table-wrapper">
-    <table>
-      <thead>
-        <tr>
-          <th>Modelo</th>
-          <th>Colaborador</th>
-          <th>Setor</th>
-          <th>Início</th>
-          <th>Fim</th>
-          <th>Som</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if proximos_agendamentos %}
-          {% for a in proximos_agendamentos %}
-            <tr class="{% if a.eh_hoje %}row-hoje{% endif %}">
-              <td>{{ a.modelo or "-" }}</td>
-              <td>{{ a.colaborador_nome }}</td>
-              <td>{{ a.colaborador_setor or "-" }}</td>
-              <td>{{ a.data_inicio_br }}</td>
-              <td>{{ a.data_fim_br }}</td>
-              <td>
-                {% if a.inclui_som %}
-                  <span class="badge-som">Com som</span>
-                {% else %}
-                  -
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        {% else %}
-          <tr>
-            <td colspan="7">Nenhum agendamento futuro cadastrado.</td>
-          </tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
-</div>
+  <!-- COLUNA DA DIREITA -->
+  <div class="dash-col">
 
-<!-- Chamados em aberto -->
-<div class="section-header">
-  <h3>Chamados em aberto</h3>
-</div>
+    <!-- Chamados -->
+    <div>
+      <div class="section-header" style="margin-top: 10px;">
+        <h3 style="color: #dc2626;">Chamados em Aberto</h3>
+      </div>
+      <div class="table-card">
+        <div class="table-wrapper">
+          {% if chamados_abertos %}
+            <table>
+              <thead>
+                <tr>
+                  <th>Equipamento</th>
+                  <th>Empresa</th>
+                  <th>Dias em Aberto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for c in chamados_abertos %}
+                  <tr>
+                    <td>{{ c.tipo_equipamento }}<br><small style="color: #718096;">S/N: {{ c.numero_serie or "-" }}</small></td>
+                    <td>{{ c.empresa }}</td>
+                    <td style="color: #b91c1c; font-weight: 500;">{{ c.dias_aberto }} dia(s)</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+             <p style="text-align: center; font-size: 13px; color: #6b7280; padding: 10px;">Nenhum chamado aberto.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
 
-<div class="table-card">
-  <div class="table-wrapper">
-    {% if chamados_abertos %}
-      <table>
-        <thead>
-          <tr>
-            <th>Equipamento / Nº de série</th>
-            <th>Empresa</th>
-            <th>Data de abertura</th>
-            <th>Dias em aberto</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for c in chamados_abertos %}
-            <tr>
-              <td>
-                {{ c.tipo_equipamento }}
-                {% if c.numero_serie %}
-                  — {{ c.numero_serie }}
-                {% endif %}
-              </td>
-              <td>{{ c.empresa }}</td>
-              <td>{{ c.data_abertura_br }}</td>
-              <td>{{ c.dias_aberto }} dia{% if c.dias_aberto != 1 %}s{% endif %}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <table>
-        <tbody>
-          <tr>
-            <td>Nenhum chamado em aberto no momento.</td>
-          </tr>
-        </tbody>
-      </table>
-    {% endif %}
-  </div>
-</div>
+    <!-- Histórico -->
+    <div>
+      <div class="section-header" style="margin-top: 10px;">
+        <h3>Histórico Recente</h3>
+      </div>
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Equipamento</th>
+                <th>Colaborador</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for h in historico %}
+                <tr>
+                  <td><strong>{{ h.serial }}</strong></td>
+                  <td>{{ h.colaborador_nome }}</td>
+                  <td>
+                    {% if h.status == 'emprestado' %}
+                        <span style="color: #d97706; font-weight: bold;">Em uso</span>
+                    {% else %}
+                        <span style="color: #10b981; font-weight: bold;">Devolvido</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
-<!-- Rotas solicitadas -->
-<div class="section-header">
-  <h3>Rotas solicitadas</h3>
-</div>
+  </div> <!-- Fim Coluna Direita -->
 
-<div class="table-card">
-  <div class="table-wrapper">
-    {% if rotas_dashboard %}
-      <table>
-        <thead>
-          <tr>
-            <th>Data</th>
-            <th>Solicitante / Unidade</th>
-            <th>Prioridade</th>
-            <th>Destino</th>
-            <th>Descrição do volume</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for rota in rotas_dashboard %}
-            <tr>
-              <td>{{ rota.data_solicitacao_br }}</td>
-              <td>
-                {{ rota.solicitante }}
-                <br><span class="tv-sub">{{ rota.unidade_origem }}</span>
-              </td>
-              <td>
-                <span class="badge-prioridade {{ rota.prioridade_css }}">
-                  {{ rota.prioridade_label }}
-                </span>
-              </td>
-              <td>{{ rota.destino }}</td>
-              <td>{{ rota.descricao_volume }}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <table>
-        <tbody>
-          <tr>
-            <td>Nenhuma rota cadastrada recentemente.</td>
-          </tr>
-        </tbody>
-      </table>
-    {% endif %}
-  </div>
-</div>
+</div> <!-- Fim do Grid -->
 {% endblock %}

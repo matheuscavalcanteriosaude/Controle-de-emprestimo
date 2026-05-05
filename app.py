@@ -6,11 +6,14 @@ import os
 import re
 import io
 import zipfile
+from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from io import StringIO
 from datetime import datetime, timedelta, date
 from docxtpl import DocxTemplate
 from flask import (
-    Flask, render_template, request, redirect, url_for, flash, Response, send_file, abort, make_response, jsonify,
+    Flask, render_template, request, redirect, url_for, flash, Response, send_file, abort, make_response, jsonify, session
 )
 
 # - Constantes
@@ -66,8 +69,6 @@ MARCAS_EQUIP = [
     "3Green",
     "Multi",
 ]
-
-
 # Label de prioridades
 
 def mapear_prioridade(prioridade_raw: str):
@@ -110,6 +111,52 @@ SOFFICE_PATH = find_soffice()
 
 app = Flask(__name__)
 app.secret_key = "chave-super-secreta"  # troque se quiser
+
+# ===================== CONTROLE DE ACESSO (DECORATORS) =====================
+
+def check_password_change():
+    """Função de apoio para verificar se a pessoa precisa mudar a senha"""
+    return session.get("must_change_password") == 1
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user_id" not in session:
+            flash("Por favor, faça login para acessar esta página.", "error")
+            return redirect(url_for("login"))
+        if check_password_change():
+            flash("Por segurança, altere sua senha inicial antes de continuar.", "warning")
+            return redirect(url_for("alterar_senha"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def tecnico_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user_id" not in session: return redirect(url_for("login"))
+        if check_password_change(): return redirect(url_for("alterar_senha"))
+        
+        if session.get("user_role") not in ["admin", "supervisor", "tecnico"]:
+            flash("Acesso negado. Seu perfil não tem permissão para esta área.", "error")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user_id" not in session: return redirect(url_for("login"))
+        if check_password_change(): return redirect(url_for("alterar_senha"))
+        
+        if session.get("user_role") not in ["admin", "supervisor"]:
+            flash("Acesso negado. Requer privilégios de Administrador ou Supervisor.", "error")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads", "termos_fixos")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 def safe_filename(name: str) -> str:
     # tira caracteres problemáticos de nome de arquivo
@@ -237,21 +284,20 @@ def init_db():
     cur = conn.cursor()
 
     # Tabela de rotas
-
     cur.execute(
-    """
-    CREATE TABLE IF NOT EXISTS rotas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        data_solicitacao TEXT NOT NULL,
-        solicitante TEXT NOT NULL,
-        unidade_origem TEXT NOT NULL,
-        prioridade TEXT NOT NULL,
-        destino TEXT NOT NULL,
-        descricao_volume TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pendente'
+        """
+        CREATE TABLE IF NOT EXISTS rotas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data_solicitacao TEXT NOT NULL,
+            solicitante TEXT NOT NULL,
+            unidade_origem TEXT NOT NULL,
+            prioridade TEXT NOT NULL,
+            destino TEXT NOT NULL,
+            descricao_volume TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pendente'
+        )
+        """
     )
-    """
-)
 
     # Tabela de notebooks (estoque)
     cur.execute(
@@ -265,7 +311,7 @@ def init_db():
         """
     )
 
-    # Tabela de empréstimos
+    # Tabela de empréstimos rotativos
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS loans (
@@ -298,7 +344,7 @@ def init_db():
         """
     )
 
-    # Tabela de Tickets
+    # Tabela de Tickets (chamados)
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS tickets (
@@ -325,6 +371,63 @@ def init_db():
         """
     )
 
+    # === NOVA TABELA: Empréstimos Fixos ===
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS fixed_loans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            notebook_id INTEGER NOT NULL,
+            colaborador_nome TEXT NOT NULL,
+            data_emprestimo TEXT NOT NULL,
+            modem_4g INTEGER DEFAULT 0,
+            modem_serial TEXT,
+            termo_arquivo TEXT,
+            status TEXT NOT NULL DEFAULT 'ativo',
+            FOREIGN KEY (notebook_id) REFERENCES notebooks (id)
+        );
+        """
+    )
+
+# === NOVA TABELA: Usuários ===
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            nome_completo TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'operador',
+            must_change_password INTEGER DEFAULT 1 -- <--- NOVO (1 = Sim, 0 = Não)
+        );
+        """
+    )
+
+    # Migração: Adiciona a coluna para quem já tem a tabela criada
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass # A coluna já existe, segue o jogo
+
+    # Verifica se existe algum usuário. Se não existir, cria o Admin padrão.
+    cur.execute("SELECT COUNT(*) AS total FROM users")
+    if cur.fetchone()["total"] == 0:
+        # A senha do primeiro admin agora exigirá troca no primeiro login
+        senha_criptografada = generate_password_hash("admin123")
+        cur.execute(
+            """
+            INSERT INTO users (username, password_hash, nome_completo, role, must_change_password)
+            VALUES (?, ?, ?, 'admin', 1)
+            """,
+            ("admin", senha_criptografada, "Administrador TI")
+        )
+
+    # Tenta adicionar a coluna setor (se der erro é porque ela já existe, então ignoramos)
+    try:
+        cur.execute("ALTER TABLE fixed_loans ADD COLUMN colaborador_setor TEXT;")
+    except sqlite3.OperationalError:
+        pass
+
+    
     conn.commit()
     conn.close()
 
@@ -365,6 +468,81 @@ def calcular_tempo_limite(data_hora_emprestimo_str: str):
     return texto, nivel
 
 # ------------------------ ROTAS ----------------------------- #
+
+# ===================== ROTAS DE AUTENTICAÇÃO =====================
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    # Se já estiver logado, manda pro dashboard
+    if "user_id" in session:
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        username = request.form.get("username").strip()
+        password = request.form.get("password")
+
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE username = ?", (username,))
+        user = cur.fetchone()
+        conn.close()
+
+        # Verifica se o usuário existe e se a senha bate com o hash salvo
+        if user and check_password_hash(user["password_hash"], password):
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
+            session["user_nome"] = user["nome_completo"]
+            session["user_role"] = user["role"]
+            session["must_change_password"] = user["must_change_password"] # <--- NOVO
+            
+            # Se precisar mudar, vai direto pra tela de alteração
+            if session["must_change_password"] == 1:
+                return redirect(url_for("alterar_senha"))
+            
+            flash(f"Bem-vindo(a), {user['nome_completo']}!", "success")
+            return redirect(url_for("dashboard"))
+        else:
+            flash("Usuário ou senha incorretos.", "error")
+
+    # Por padrão, vamos usar um template simples de login
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.clear() # Limpa tudo da sessão
+    flash("Você saiu do sistema.", "success")
+    return redirect(url_for("login"))
+
+@app.route("/alterar-senha", methods=["GET", "POST"])
+def alterar_senha():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        nova_senha = request.form.get("nova_senha")
+        confirmar_senha = request.form.get("confirmar_senha")
+
+        if nova_senha != confirmar_senha:
+            flash("As senhas não coincidem. Tente novamente.", "error")
+        elif len(nova_senha) < 6:
+            flash("A senha deve ter no mínimo 6 caracteres.", "error")
+        else:
+            conn = get_connection()
+            cur = conn.cursor()
+            hashed_pw = generate_password_hash(nova_senha)
+            # Atualiza a senha e diz que não precisa mais trocar
+            cur.execute(
+                "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
+                (hashed_pw, session["user_id"])
+            )
+            conn.commit()
+            conn.close()
+
+            session["must_change_password"] = 0
+            flash("Senha alterada com sucesso!", "success")
+            return redirect(url_for("dashboard"))
+
+    return render_template("alterar_senha.html")
 
 # Rotas DOP
 
@@ -666,7 +844,12 @@ def baixar_termo(loan_id):
 
 @app.route("/")
 def index():
-    return redirect(url_for("dashboard"))
+    # Se o usuário já estiver logado, joga ele pro Dashboard
+    if "user_id" in session:
+        return redirect(url_for("dashboard"))
+    
+    # Se não estiver logado, joga ele para a tela de Login naturalmente
+    return redirect(url_for("login"))
 
 @app.route("/termo/<int:loan_id>/visualizar")
 def visualizar_termo(loan_id):
@@ -784,6 +967,7 @@ def marcar_rota_enviada(rota_id):
 # ===================== CADASTRO / LISTA DE NOTEBOOKS =====================
 
 @app.route("/notebooks/novo", methods=["GET", "POST"])
+@tecnico_required
 def novo_notebook():
     conn = get_connection()
     cur = conn.cursor()
@@ -791,42 +975,124 @@ def novo_notebook():
     if request.method == "POST":
         serial = request.form.get("serial", "").strip()
         modelo = request.form.get("modelo", "").strip()
+        tipo_cadastro = request.form.get("tipo_cadastro") # 'rotativo' ou 'fixo'
 
         if not serial:
             flash("O número de série é obrigatório.", "error")
             conn.close()
             return redirect(url_for("novo_notebook"))
 
-        try:
-            cur.execute(
-                "INSERT INTO notebooks (serial, modelo, status) VALUES (?, ?, 'ativo')",
-                (serial, modelo),
-            )
-            conn.commit()
-            flash("Notebook cadastrado com sucesso!", "success")
-        except sqlite3.IntegrityError:
-            flash("Já existe um notebook com esse número de série.", "error")
+        # Verifica se o serial já existe no banco
+        cur.execute("SELECT id, status FROM notebooks WHERE serial = ?", (serial,))
+        existente = cur.fetchone()
+        notebook_id = None
 
-    # Lista notebooks (ativos e inativos)
+        if existente:
+            if existente["status"] == "inativo":
+                # Reativa o notebook
+                cur.execute("UPDATE notebooks SET status = 'ativo', modelo = ? WHERE id = ?", (modelo, existente["id"]))
+                notebook_id = existente["id"]
+                flash("Notebook reativado com sucesso!", "success")
+            else:
+                flash("Já existe um notebook na base de ativos ou fixos com esse número de série.", "error")
+                conn.close()
+                return redirect(url_for("novo_notebook"))
+        else:
+            # Novo cadastro
+            cur.execute("INSERT INTO notebooks (serial, modelo, status) VALUES (?, ?, 'ativo')", (serial, modelo))
+            notebook_id = cur.lastrowid
+            flash("Notebook cadastrado com sucesso!", "success")
+
+# Se o usuário escolheu "Fixo", já registra o empréstimo fixo e anexa o arquivo
+        if tipo_cadastro == "fixo" and notebook_id:
+            colaborador_nome = request.form.get("colaborador_nome", "").strip()
+            colaborador_setor = request.form.get("colaborador_setor", "").strip() # <--- NOVO
+            data_emprestimo = request.form.get("data_emprestimo", "").strip()
+            modem_4g = 1 if request.form.get("modem_4g") == "on" else 0
+            modem_serial = request.form.get("modem_serial", "").strip() if modem_4g else ""
+
+            arquivo = request.files.get("termo_arquivo")
+            nome_arquivo_salvo = ""
+            
+            if arquivo and arquivo.filename != "":
+                nome_original = secure_filename(arquivo.filename)
+                nome_arquivo_salvo = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{nome_original}"
+                caminho_salvo = os.path.join(app.config['UPLOAD_FOLDER'], nome_arquivo_salvo)
+                arquivo.save(caminho_salvo)
+
+            # Grava na tabela de empréstimos fixos (AGORA COM SETOR)
+            cur.execute(
+                """
+                INSERT INTO fixed_loans (
+                    notebook_id, colaborador_nome, colaborador_setor, data_emprestimo, 
+                    modem_4g, modem_serial, termo_arquivo, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ativo')
+                """,
+                (notebook_id, colaborador_nome, colaborador_setor, data_emprestimo, modem_4g, modem_serial, nome_arquivo_salvo)
+            )
+            # Muda o status do equipamento para 'fixo'
+            cur.execute("UPDATE notebooks SET status = 'fixo' WHERE id = ?", (notebook_id,))
+            flash(f"Empréstimo fixo para {colaborador_nome} ({colaborador_setor}) registrado!", "success")
+
+        conn.commit()
+        conn.close()
+        return redirect(url_for("novo_notebook"))
+
+    # ==================== GET (Renderiza as Duas Listas) ====================
+    # 1. Rotativos (apenas ativos e inativos)
+    cur.execute(
+        "SELECT id, serial, modelo, status FROM notebooks WHERE status IN ('ativo', 'inativo') ORDER BY status DESC, serial"
+    )
+    rotativos = cur.fetchall()
+
+# 2. Fixos (Agora puxando o f.colaborador_setor)
     cur.execute(
         """
-        SELECT id, serial, modelo, status
-        FROM notebooks
-        ORDER BY status DESC, serial
+        SELECT n.id as notebook_id, n.serial, n.modelo, 
+               f.id as fixo_id, f.colaborador_nome, f.colaborador_setor, f.termo_arquivo 
+        FROM notebooks n
+        JOIN fixed_loans f ON n.id = f.notebook_id
+        WHERE n.status = 'fixo' AND f.status = 'ativo'
+        ORDER BY n.serial
         """
     )
-    notebooks = cur.fetchall()
+    fixos = cur.fetchall()
     conn.close()
 
-    return render_template("notebook_form.html", notebooks=notebooks)
+    return render_template("notebook_form.html", rotativos=rotativos, fixos=fixos)
 
+# Rota para baixar o anexo (Adicione se ainda não tiver)
+@app.route("/emprestimos-fixos/termo/<filename>")
+def baixar_termo_fixo(filename):
+    return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename), as_attachment=True)
+
+# Rota para devolver o Fixo e retorná-lo para os Rotativos
+@app.route("/emprestimos-fixos/devolver/<int:fixo_id>", methods=["POST"])
+def devolver_fixo(fixo_id):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT notebook_id FROM fixed_loans WHERE id = ?", (fixo_id,))
+    row = cur.fetchone()
+    
+    if row:
+        notebook_id = row["notebook_id"]
+        cur.execute("UPDATE fixed_loans SET status = 'devolvido' WHERE id = ?", (fixo_id,))
+        cur.execute("UPDATE notebooks SET status = 'ativo' WHERE id = ?", (notebook_id,))
+        conn.commit()
+        flash("Equipamento devolvido! Agora ele é um notebook rotativo disponível no estoque.", "success")
+        
+    conn.close()
+    return redirect(url_for("novo_notebook"))
+
+# ===================== AÇÕES ROTATIVOS =====================
 
 @app.route("/notebooks/remover/<int:notebook_id>", methods=["POST"])
+@tecnico_required
 def remover_notebook(notebook_id):
     conn = get_connection()
     cur = conn.cursor()
 
-    # Verifica se há empréstimo ativo
+    # Verifica se há empréstimo ativo antes de inativar
     cur.execute(
         "SELECT COUNT(*) AS total FROM loans WHERE notebook_id = ? AND status = 'emprestado'",
         (notebook_id,),
@@ -834,15 +1100,27 @@ def remover_notebook(notebook_id):
     em_uso = cur.fetchone()["total"]
 
     if em_uso > 0:
-        flash("Não é possível remover: notebook está com empréstimo ativo.", "error")
-        conn.close()
-        return redirect(url_for("novo_notebook"))
+        flash("Não é possível inativar: notebook está com empréstimo rotativo ativo.", "error")
+    else:
+        cur.execute("UPDATE notebooks SET status = 'inativo' WHERE id = ?", (notebook_id,))
+        conn.commit()
+        flash("Notebook inativado com sucesso.", "success")
+        
+    conn.close()
+    return redirect(url_for("novo_notebook"))
 
-    cur.execute("UPDATE notebooks SET status = 'inativo' WHERE id = ?", (notebook_id,))
+
+@app.route("/notebooks/reativar/<int:notebook_id>", methods=["POST"])
+@tecnico_required
+def reativar_notebook(notebook_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("UPDATE notebooks SET status = 'ativo' WHERE id = ?", (notebook_id,))
     conn.commit()
     conn.close()
 
-    flash("Notebook removido (marcado como inativo).", "success")
+    flash("Notebook reativado com sucesso.", "success")
     return redirect(url_for("novo_notebook"))
 
 
@@ -1636,6 +1914,7 @@ def tv_dashboard():
 
 
 @app.route("/relatorio/emprestimo")
+@tecnico_required
 def relatorio_emprestimo():
     data_inicio = request.args.get("data_inicio")
     data_fim = request.args.get("data_fim")
@@ -2016,6 +2295,75 @@ def relatorio_emprestimo():
         setor=setor,
         status=status,
     )
+
+# ===================== GESTÃO DE USUÁRIOS (CONFIGURAÇÕES) =====================
+
+@app.route("/usuarios", methods=["GET", "POST"])
+@admin_required
+def gerenciar_usuarios():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    if request.method == "POST":
+        username = request.form.get("username").strip()
+        nome_completo = request.form.get("nome_completo").strip()
+        role = request.form.get("role")
+        
+        # A SENHA AGORA É FIXA (REMOVIDO DO FORM)
+        senha_padrao = "Rios@ude1234"
+
+        if not username or not nome_completo or not role:
+            flash("Preencha todos os campos.", "error")
+        else:
+            try:
+                hashed_pw = generate_password_hash(senha_padrao)
+                cur.execute(
+                    "INSERT INTO users (username, password_hash, nome_completo, role, must_change_password) VALUES (?, ?, ?, ?, 1)",
+                    (username, hashed_pw, nome_completo, role)
+                )
+                conn.commit()
+                flash(f"Usuário cadastrado com sucesso! A senha inicial é {senha_padrao}", "success")
+            except sqlite3.IntegrityError:
+                flash("Este nome de usuário (login) já existe no sistema.", "error")
+
+    cur.execute("SELECT id, username, nome_completo, role FROM users ORDER BY role, nome_completo")
+    usuarios = cur.fetchall()
+    conn.close()
+
+    return render_template("usuarios.html", usuarios=usuarios)
+
+# ROTA PARA RESETAR SENHA (ADICIONE ABAIXO DA DELETAR)
+@app.route("/usuarios/resetar/<int:user_id>", methods=["POST"])
+@admin_required
+def resetar_senha_usuario(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+    senha_padrao = "Rios@ude1234"
+    hashed_pw = generate_password_hash(senha_padrao)
+    
+    cur.execute(
+        "UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?", 
+        (hashed_pw, user_id)
+    )
+    conn.commit()
+    conn.close()
+    flash("A senha do usuário foi redefinida para 'Rios@ude1234' com sucesso.", "success")
+    return redirect(url_for("gerenciar_usuarios"))
+
+@app.route("/usuarios/remover/<int:user_id>", methods=["POST"])
+@admin_required
+def remover_usuario(user_id):
+    if user_id == session.get("user_id"):
+        flash("Você não pode excluir a sua própria conta logada.", "error")
+        return redirect(url_for("gerenciar_usuarios"))
+        
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    flash("Usuário removido com sucesso.", "success")
+    return redirect(url_for("gerenciar_usuarios"))
  
 
       

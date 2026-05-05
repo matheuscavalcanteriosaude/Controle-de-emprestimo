@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Cadastro de Notebooks</h2>
+<h2>Gestão de Estoque e Ativos</h2>
 
 <div class="form-layout">
-  <form method="post" class="form-card">
+  <!-- Importante manter o enctype para envio de arquivos -->
+  <form method="post" enctype="multipart/form-data" class="form-card">
     <div class="form-header">
-      <p>Cadastrar novos equipamentos para o estoque.</p>
+      <p>Cadastrar novos equipamentos e definir modalidade de uso.</p>
     </div>
 
     <label for="serial">Nº de Série</label>
@@ -14,61 +15,208 @@
     <label for="modelo">Modelo (opcional)</label>
     <input type="text" id="modelo" name="modelo" />
 
-    <button type="submit" class="btn-primary">Salvar</button>
+    <!-- Radio Buttons para escolher a modalidade -->
+    <label style="margin-top: 15px; font-weight: bold;">Modalidade do Notebook</label>
+    <div style="margin-bottom: 15px; padding: 10px; border-radius: 6px; background-color: #f7fafc; border: 1px solid #e2e8f0;">
+        <input type="radio" id="tipo_rotativo" name="tipo_cadastro" value="rotativo" checked onchange="toggleFixoFields()">
+        <label for="tipo_rotativo" style="display:inline; margin-right: 20px;">Estoque / Rotativo</label>
+
+        <input type="radio" id="tipo_fixo" name="tipo_cadastro" value="fixo" onchange="toggleFixoFields()">
+        <label for="tipo_fixo" style="display:inline;">Empréstimo Fixo</label>
+    </div>
+
+    <!-- Campos que só aparecem se marcar Fixo -->
+    <div id="div_campos_fixo" style="display: none; padding: 15px; background: #fff; border: 1px solid #cbd5e0; border-radius: 6px; margin-bottom: 15px;">
+        
+        <label for="colaborador_nome">Nome do Colaborador</label>
+        <input type="text" id="colaborador_nome" name="colaborador_nome" />
+
+        <label for="colaborador_setor">Setor do Colaborador</label>
+        <select id="colaborador_setor" name="colaborador_setor">
+          <option value="">-- Selecione o Setor --</option>
+          <option value="Comunicação">Comunicação</option>
+          <option value="DAF - Assessoria">DAF - Assessoria</option>
+          <option value="DAF - CACC">DAF - CACC</option>
+          <option value="DAF - CTPF">DAF - CTPF</option>
+          <option value="DEA">DEA</option>
+          <option value="DGOVI">DGOVI</option>
+          <option value="DGP">DGP</option>
+          <option value="DJUR">DJUR</option>
+          <option value="DOP">DOP</option>
+          <option value="Integridade (NIN)">Integridade (NIN)</option>
+          <option value="Manutenção">Manutenção</option>
+          <option value="NAE">NAE</option>
+          <option value="Ouvidoria">Ouvidoria</option>
+          <option value="Presidência">Presidência</option>
+        </select>
+
+        <label for="data_emprestimo">Data do Empréstimo</label>
+        <input type="date" id="data_emprestimo" name="data_emprestimo" />
+
+        <div style="margin: 15px 0;">
+          <input type="checkbox" id="modem_4g" name="modem_4g" onchange="toggleModemSerial()">
+          <label for="modem_4g" style="display:inline; font-weight: bold;">Acompanha Modem 4G?</label>
+        </div>
+
+        <div id="div_modem_serial" style="display: none; margin-bottom: 15px;">
+          <label for="modem_serial">Nº de Série do Modem</label>
+          <input type="text" id="modem_serial" name="modem_serial" />
+        </div>
+
+        <label for="termo_arquivo">Anexar Termo Assinado (PDF, JPG, PNG)</label>
+        <input type="file" id="termo_arquivo" name="termo_arquivo" accept=".pdf, .jpg, .jpeg, .png" style="width: 100%; border: 1px dashed #a0aec0; padding: 10px;" />
+    </div>
+
+    <button type="submit" class="btn-primary">Salvar Equipamento</button>
   </form>
 
   <div class="form-side-info">
     <div class="info-card">
       <h3>Orientações</h3>
       <ul>
-        <li>O número de série não pode se repetir.</li>
-        <li>A exclusão marca o notebook como <strong>inativo</strong>, mantendo o histórico.</li>
-        <li>Não é possível remover notebooks com empréstimo ativo.</li>
+        <li><strong>Rotativos:</strong> Ficam no estoque disponíveis para agendamentos e empréstimos diários.</li>
+        <li><strong>Fixos:</strong> São atrelados a um colaborador, exigem termo e não aparecem nos agendamentos.</li>
+        <li>Se você reativar um inativo marcando "Fixo", ele mudará de modalidade.</li>
       </ul>
     </div>
   </div>
 </div>
 
-<div class="section-header">
-  <h3>Lista de notebooks</h3>
+<!-- ================= LISTAS DIVIDIDAS LADO A LADO ================= -->
+<div style="display: flex; gap: 20px; margin-top: 30px; flex-wrap: wrap;">
+    
+    <!-- TABELA 1: ROTATIVOS (Esquerda) -->
+    <div style="flex: 1; min-width: 45%;" class="table-card">
+        <div class="section-header" style="margin: 15px; border-bottom: 2px solid #3182ce; padding-bottom: 5px;">
+          <h3 style="color: #2d3748;">Estoque / Rotativos</h3>
+        </div>
+        <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nº Série</th>
+                  <th>Status</th>
+                  <th class="th-acoes">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if rotativos %}
+                  {% for nb in rotativos %}
+                    <tr>
+                      <td>
+                        <strong>{{ nb.serial }}</strong><br>
+                        <small style="color: #718096;">{{ nb.modelo or "-" }}</small>
+                      </td>
+                      <td>
+                        {% if nb.status == 'ativo' %}
+                            <span style="background: #c6f6d5; color: #22543d; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; font-weight: bold;">Estoque</span>
+                        {% else %}
+                            <span style="background: #fed7d7; color: #742a2a; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; font-weight: bold;">Inativo</span>
+                        {% endif %}
+                      </td>
+                      <td class="td-acoes">
+                        {% if nb.status == 'ativo' %}
+                          <form method="post" action="{{ url_for('remover_notebook', notebook_id=nb.id) }}" style="display:inline;" onsubmit="return confirm('Confirmar inativação deste notebook?');">
+                            <button type="submit" class="btn-small btn-danger">Inativar</button>
+                          </form>
+                        {% else %}
+                          <form method="post" action="{{ url_for('reativar_notebook', notebook_id=nb.id) }}" style="display:inline;">
+                            <button type="submit" class="btn-small btn-success">Reativar</button>
+                          </form>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="3" style="text-align: center;">Nenhum rotativo cadastrado.</td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TABELA 2: FIXOS (Direita) -->
+    <div style="flex: 1; min-width: 45%;" class="table-card">
+        <div class="section-header" style="margin: 15px; border-bottom: 2px solid #805ad5; padding-bottom: 5px;">
+          <h3 style="color: #2d3748;">Empréstimos Fixos</h3>
+        </div>
+        <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nº Série</th>
+                  <th>Colaborador / Setor</th> <!-- Atualizado -->
+                  <th class="th-acoes">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if fixos %}
+                  {% for f in fixos %}
+                    <tr>
+                      <td>
+                        <strong>{{ f.serial }}</strong><br>
+                        {% if f.termo_arquivo %}
+                          <a href="{{ url_for('baixar_termo_fixo', filename=f.termo_arquivo) }}" target="_blank" style="color: #3182ce; font-size: 0.85em;">📥 Ver PDF</a>
+                        {% else %}
+                          <span style="color: #a0aec0; font-size: 0.85em;">Sem anexo</span>
+                        {% endif %}
+                      </td>
+                      <td>
+                        {{ f.colaborador_nome }}<br>
+                        <small style="color: #718096;">{{ f.colaborador_setor or '-' }}</small> <!-- Setor adicionado aqui -->
+                      </td>
+                      <td class="td-acoes">
+                        <form method="post" action="{{ url_for('devolver_fixo', fixo_id=f.fixo_id) }}" onsubmit="return confirm('Notebook recebido? Ele será limpo deste usuário e voltará para o Estoque/Rotativo.');">
+                          <button type="submit" class="btn-small" style="background-color: #ed8936; color: white; border: none;">Devolver</button>
+                        </form>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="3" style="text-align: center;">Nenhum empréstimo fixo em andamento.</td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+        </div>
+    </div>
+
 </div>
 
-<div class="table-card">
-  <div class="table-wrapper">
-    <table>
-      <thead>
-        <tr>
-          <th>Nº Série</th>
-          <th>Modelo</th>
-          <th>Status</th>
-          <th class="th-acoes">Ações</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if notebooks %}
-          {% for nb in notebooks %}
-            <tr>
-              <td>{{ nb.serial }}</td>
-              <td>{{ nb.modelo or "-" }}</td>
-              <td>{{ nb.status }}</td>
-              <td class="td-acoes">
-                {% if nb.status == 'ativo' %}
-                  <form method="post" action="{{ url_for('remover_notebook', notebook_id=nb.id) }}" onsubmit="return confirm('Confirmar remoção deste notebook?');">
-                    <button type="submit" class="btn-small btn-danger">Remover</button>
-                  </form>
-                {% else %}
-                  -
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        {% else %}
-          <tr>
-            <td colspan="4">Nenhum notebook cadastrado.</td>
-          </tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
-</div>
+<!-- Scripts para esconder e mostrar os campos -->
+<script>
+function toggleFixoFields() {
+    var isFixo = document.getElementById("tipo_fixo").checked;
+    var divCampos = document.getElementById("div_campos_fixo");
+    var nomeInput = document.getElementById("colaborador_nome");
+    var setorInput = document.getElementById("colaborador_setor"); // <--- Adicionado
+    var dataInput = document.getElementById("data_emprestimo");
+
+    if (isFixo) {
+        divCampos.style.display = "block";
+        nomeInput.required = true;
+        setorInput.required = true; // <--- Adicionado
+        dataInput.required = true;
+    } else {
+        divCampos.style.display = "none";
+        nomeInput.required = false;
+        setorInput.required = false; // <--- Adicionado
+        dataInput.required = false;
+    }
+}
+
+function toggleModemSerial() {
+    var checkBox = document.getElementById("modem_4g");
+    var divSerial = document.getElementById("div_modem_serial");
+    if (checkBox.checked) {
+        divSerial.style.display = "block";
+    } else {
+        divSerial.style.display = "none";
+        document.getElementById("modem_serial").value = "";
+    }
+}
+</script>
 {% endblock %}

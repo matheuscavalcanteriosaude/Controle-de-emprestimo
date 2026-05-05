@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display: flex; justify-content: center; margin-top: 50px;">
+  <div class="form-card" style="width: 100%; max-width: 450px;">
+    <h2>Definição de Senha</h2>
+    <p style="color: #4b5563; font-size: 14px; margin-bottom: 20px;">
+      Esta é a sua primeira vez acessando ou sua senha foi redefinida. Por favor, cadastre uma nova senha de acesso.
+    </p>
+
+    <form method="post">
+      <label for="nova_senha">Nova Senha</label>
+      <input type="password" id="nova_senha" name="nova_senha" required minlength="6" placeholder="Mínimo de 6 caracteres">
+
+      <label for="confirmar_senha">Confirmar Nova Senha</label>
+      <input type="password" id="confirmar_senha" name="confirmar_senha" required placeholder="Repita a senha">
+
+      <button type="submit" class="btn-primary" style="width: 100%; margin-top: 20px;">Salvar Senha e Entrar</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
