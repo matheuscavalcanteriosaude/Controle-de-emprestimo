@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Gestão de Remanejamentos</h2>
+
+<div class="form-layout">
+  <form method="POST" action="{{ url_for('remanejamentos') }}" class="form-card">
+    <div class="form-header">
+      <p>Registre a movimentação interna ou externa de equipamentos entre os setores.</p>
+    </div>
+
+    <label for="solicitante_nome">Nome do solicitante</label>
+    <input type="text" id="solicitante_nome" name="solicitante_nome" required />
+
+    <label for="solicitante_diretoria">Setor do solicitante</label>
+    <select id="solicitante_diretoria" name="solicitante_diretoria" required>
+      <option value="">Selecione...</option>
+      <option>Comunicação</option>
+      <option>DAF - Assessoria</option>
+      <option>DAF - CACC</option>
+      <option>DAF - CTPF</option>
+      <option>DEA</option>
+      <option>DGOVI</option>
+      <option>DGP</option>
+      <option>DJUR</option>
+      <option>DOP</option>
+      <option>Integridade (NIN)</option>
+      <option>Manutenção</option>
+      <option>NAE</option>
+      <option>Ouvidoria</option>
+      <option>Presidência</option>
+    </select>
+
+    <label for="quantidade_equipamentos">Quantidade de equipamentos</label>
+    <input type="number" id="quantidade_equipamentos" name="quantidade_equipamentos" min="1" required />
+
+    <label for="data_remanejamento">Data da movimentação</label>
+    <input type="date" id="data_remanejamento" name="data_remanejamento" required />
+
+    <label class="checkbox-inline">
+      <input type="checkbox" id="check_entre_diretorias" name="entre_diretorias" />
+      Movimentação entre setores diferentes
+    </label>
+
+    <div id="box_origem_destino" style="display: none; margin-top: 15px; padding: 15px; border: 1px solid #ddd; border-radius: 8px; background: #fbfbfb;">
+      <label for="select_origem">Origem (De onde sai)</label>
+      <select id="select_origem" name="diretoria_origem" style="margin-bottom: 10px;">
+        <option value="">Selecione...</option>
+        <option>Comunicação</option>
+        <option>DAF - Assessoria</option>
+        <option>DAF - CACC</option>
+        <option>DAF - CTPF</option>
+        <option>DEA</option>
+        <option>DGOVI</option>
+        <option>DGP</option>
+        <option>DJUR</option>
+        <option>DOP</option>
+        <option>Integridade (NIN)</option>
+        <option>Manutenção</option>
+        <option>NAE</option>
+        <option>Ouvidoria</option>
+        <option>Presidência</option>
+      </select>
+
+      <label for="select_destino">Destino (Para onde vai)</label>
+      <select id="select_destino" name="diretoria_destino">
+        <option value="">Selecione...</option>
+        <option>Comunicação</option>
+        <option>DAF - Assessoria</option>
+        <option>DAF - CACC</option>
+        <option>DAF - CTPF</option>
+        <option>DEA</option>
+        <option>DGOVI</option>
+        <option>DGP</option>
+        <option>DJUR</option>
+        <option>DOP</option>
+        <option>Integridade (NIN)</option>
+        <option>Manutenção</option>
+        <option>NAE</option>
+        <option>Ouvidoria</option>
+        <option>Presidência</option>
+      </select>
+    </div>
+
+    <button type="submit" class="btn-primary" style="margin-top: 20px;">Registrar remanejamento</button>
+  </form>
+
+  <div class="form-side-info">
+    <div class="info-card">
+      <h3>Regras de remanejamento</h3>
+      <ul>
+        <li>O remanejamento serve para transferir responsabilidades de equipamentos de TI de forma segura.</li>
+        <li>Marque a opção de "setores diferentes" caso o equipamento vá mudar de localização.</li>
+        <li>Só altere o status para "Concluído" quando a movimentação for finalizada fisicamente.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section-header">
+  <h3>Histórico de remanejamentos</h3>
+</div>
+
+{% if remanejamentos %}
+  <div class="ag-grid">
+    {% for rem in remanejamentos %}
+      <div class="ag-card">
+        <div class="ag-card-header">
+          <span class="ag-horario">
+            {{ rem.data_br }}
+          </span>
+          {% if rem.status == 'agendado' %}
+            <span class="badge-hoje" style="background: #f39c12; color: #fff;">Agendado</span>
+          {% elif rem.status == 'concluído' %}
+            <span class="badge-hoje" style="background: #27ae60; color: #fff;">Concluído</span>
+          {% else %}
+            <span class="badge-hoje" style="background: #c0392b; color: #fff;">Cancelado</span>
+          {% endif %}
+        </div>
+
+        <p class="ag-equip">
+          {{ rem.quantidade_equipamentos }} equipamento(s)
+        </p>
+
+        <p class="ag-colab">
+          {{ rem.solicitante_nome }}
+          {% if rem.solicitante_diretoria %}
+            &mdash; {{ rem.solicitante_diretoria }}
+          {% endif %}
+        </p>
+
+        <p class="ag-extra">
+          {% if rem.entre_diretorias == 1 %}
+            <span class="badge-som">De: {{ rem.diretoria_origem }} &rarr; Para: {{ rem.diretoria_destino }}</span>
+          {% else %}
+            <span class="badge-som badge-som-off">Remanejamento interno</span>
+          {% endif %}
+        </p>
+
+        {% if rem.status == 'agendado' and session.get('user_role') in ['admin', 'supervisor', 'tecnico'] %}
+        <div class="ag-actions" style="display: flex; gap: 8px;">
+          <form method="POST" action="{{ url_for('acao_remanejamento', id_rem=rem.id, acao='concluir') }}" style="margin: 0; padding: 0; background: none; box-shadow: none; width: auto;">
+            <button type="submit" class="btn-small" style="border: none; cursor: pointer;">Concluir</button>
+          </form>
+          <form method="POST" action="{{ url_for('acao_remanejamento', id_rem=rem.id, acao='cancelar') }}" style="margin: 0; padding: 0; background: none; box-shadow: none; width: auto;">
+            <button type="submit" class="btn-small btn-danger" style="border: none; cursor: pointer;" onclick="return confirm('Deseja realmente cancelar este remanejamento?');">Cancelar</button>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="table-card">
+    <div class="table-wrapper">
+      <table>
+        <tbody>
+          <tr>
+            <td style="text-align: center;">Nenhum remanejamento registrado até o momento.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+      const checkbox = document.getElementById('check_entre_diretorias');
+      const boxOrigemDestino = document.getElementById('box_origem_destino');
+      const selectOrigem = document.getElementById('select_origem');
+      const selectDestino = document.getElementById('select_destino');
+
+      function toggleCampos() {
+          if (checkbox.checked) {
+              boxOrigemDestino.style.display = 'block';
+              selectOrigem.setAttribute('required', 'required');
+              selectDestino.setAttribute('required', 'required');
+          } else {
+              boxOrigemDestino.style.display = 'none';
+              selectOrigem.removeAttribute('required');
+              selectDestino.removeAttribute('required');
+              selectOrigem.value = "";
+              selectDestino.value = "";
+          }
+      }
+
+      checkbox.addEventListener('change', toggleCampos);
+  });
+</script>
+{% endblock %}

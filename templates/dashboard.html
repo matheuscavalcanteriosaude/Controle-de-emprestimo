@@ -97,6 +97,42 @@
   </div>
 </div>
 
+<div class="section-header">
+    <h3><i class="fas fa-exchange-alt"></i> Remanejamentos Pendentes</h3>
+</div>
+<div class="table-card">
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Solicitante</th>
+                    <th>Qtd</th>
+                    <th>Trajeto</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rem in remanejamentos_pendentes %}
+                <tr>
+                    <td>{{ rem.data_br }}</td>
+                    <td>{{ rem.solicitante_nome }} ({{ rem.solicitante_diretoria }})</td>
+                    <td>{{ rem.quantidade_equipamentos }}</td>
+                    <td>
+                        {% if rem.entre_diretorias %}
+                            {{ rem.diretoria_origem }} &rarr; {{ rem.diretoria_destino }}
+                        {% else %}
+                            Interno
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4">Nenhum remanejamento pendente.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
 <!-- GRID LADO A LADO PARA O RESTANTE DAS INFORMAÇÕES -->
 <div class="dash-grid">
   
@@ -231,15 +267,19 @@
               </tr>
             </thead>
             <tbody>
-              {% for h in historico %}
+                {% for h in historico %}
                 <tr>
                   <td><strong>{{ h.serial }}</strong></td>
-                  <td>{{ h.colaborador_nome }}</td>
+                  <td>
+                    {{ h.colaborador_nome }}<br>
+                    <small style="color: #6b7280;">Emprestado por: <b>{{ h.registrado_por or 'Legado' }}</b></small>
+                  </td>
                   <td>
                     {% if h.status == 'emprestado' %}
                         <span style="color: #d97706; font-weight: bold;">Em uso</span>
                     {% else %}
-                        <span style="color: #10b981; font-weight: bold;">Devolvido</span>
+                        <span style="color: #10b981; font-weight: bold;">Devolvido</span><br>
+                        <small style="color: #6b7280;">Recebido por: <b>{{ h.recebido_por or '-' }}</b></small>
                     {% endif %}
                   </td>
                 </tr>

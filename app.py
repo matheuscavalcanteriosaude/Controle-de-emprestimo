@@ -1,4 +1,6 @@
-import sqlite3
+import psycopg2
+import psycopg2.extras
+from psycopg2 import IntegrityError
 import csv
 import subprocess
 import shutil
@@ -15,6 +17,15 @@ from docxtpl import DocxTemplate
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, Response, send_file, abort, make_response, jsonify, session
 )
+
+# ===================== CONFIGURAÇÃO DO POSTGRES =====================
+DB_CONFIG = {
+    "host": "localhost",       # Coloque o IP do seu servidor Windows
+    "database": "controle_db", # Nome do banco de dados criado
+    "user": "postgres",        # Usuário do banco
+    "password": "Rios@ude1234",   # Senha do banco
+    "port": 5001
+}
 
 # - Constantes
 
@@ -42,7 +53,6 @@ UNIDADES_ROTA = [
     "Outro",
 ]
 
-APP_DB = "notebooks.db"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TERMOS_DIR = os.path.join(BASE_DIR, "termos")
 TERMOS_GERADOS_DIR = os.path.join(BASE_DIR, "termos_gerados")
@@ -69,8 +79,8 @@ MARCAS_EQUIP = [
     "3Green",
     "Multi",
 ]
-# Label de prioridades
 
+# Label de prioridades
 def mapear_prioridade(prioridade_raw: str):
     """Recebe o texto vindo do Forms e devolve (label_curta, classe_css)."""
     if not prioridade_raw:
@@ -87,18 +97,15 @@ def mapear_prioridade(prioridade_raw: str):
     if "baixa" in p:
         return ("Baixa", "badge-prioridade-baixa")
 
-    # fallback
     return (prioridade_raw, "badge-prioridade-baixa")
 
 
 # - Gerador de termos
-
 def find_soffice():
     candidatos = [
         r"C:\Program Files\LibreOffice\program\soffice.exe",
         r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
     ]
-    # se tiver no PATH
     if shutil.which("soffice"):
         return "soffice"
     for c in candidatos:
@@ -159,7 +166,6 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 def safe_filename(name: str) -> str:
-    # tira caracteres problemáticos de nome de arquivo
     name = re.sub(r'[<>:"/\\|?*]+', "_", name)
     name = name.strip()
     if not name:
@@ -167,20 +173,13 @@ def safe_filename(name: str) -> str:
     return name
 
 def gerar_termo_pdf(loan_id: int) -> str | None:
-    """
-    Usa o modelo .docx do termo para gerar um DOCX preenchido
-    e, em seguida, converte para PDF usando LibreOffice.
-    Retorna o caminho do PDF ou None se algo falhar.
-    """
-    # 1) gera o DOCX preenchido (já usa o seu modelo)
     docx_path = gerar_termo_docx(loan_id)
     if not docx_path or not os.path.isfile(docx_path):
         return None
 
-    # 2) precisa do LibreOffice (soffice)
     global SOFFICE_PATH
     if not SOFFICE_PATH:
-        return None  # depois tratamos isso na rota
+        return None 
 
     outdir = TERMOS_GERADOS_DIR
     cmd = [
@@ -210,17 +209,12 @@ def gerar_termo_pdf(loan_id: int) -> str | None:
 
 
 def gerar_termo_docx(loan_id: int) -> str | None:
-    """
-    Gera um termo DOCX a partir do modelo_termo.docx usando os dados do empréstimo.
-    Retorna o caminho do arquivo gerado ou None se der algum problema.
-    """
     template_path = os.path.join(TERMOS_DIR, "modelo_termo.docx")
     if not os.path.isfile(template_path):
-        # se o modelo não existir, não faz nada
         return None
 
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute(
         """
         SELECT
@@ -232,7 +226,7 @@ def gerar_termo_docx(loan_id: int) -> str | None:
             n.modelo
         FROM loans l
         JOIN notebooks n ON n.id = l.notebook_id
-        WHERE l.id = ?
+        WHERE l.id = %s
         """,
         (loan_id,),
     )
@@ -242,7 +236,6 @@ def gerar_termo_docx(loan_id: int) -> str | None:
     if row is None:
         return None
 
-    # prepara dados
     nome = row["colaborador_nome"]
     setor = row["colaborador_setor"] or ""
     serial = row["serial"] or ""
@@ -254,7 +247,6 @@ def gerar_termo_docx(loan_id: int) -> str | None:
     except Exception:
         data_emprestimo_br = row["data_hora_emprestimo"]
 
-    # contexto para o docxtpl → use os mesmos nomes de placeholders do seu modelo
     context = {
         "NOME": nome,
         "SETOR": setor,
@@ -272,22 +264,19 @@ def gerar_termo_docx(loan_id: int) -> str | None:
 
     return output_path
 
-
+# ===================== CONEXÃO POSTGRES =====================
 def get_connection():
-    conn = sqlite3.connect(APP_DB)
-    conn.row_factory = sqlite3.Row
-    return conn
-
+    return psycopg2.connect(**DB_CONFIG)
 
 def init_db():
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     # Tabela de rotas
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS rotas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             data_solicitacao TEXT NOT NULL,
             solicitante TEXT NOT NULL,
             unidade_origem TEXT NOT NULL,
@@ -303,7 +292,7 @@ def init_db():
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS notebooks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             serial TEXT UNIQUE NOT NULL,
             modelo TEXT,
             status TEXT DEFAULT 'ativo'
@@ -315,7 +304,7 @@ def init_db():
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS loans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             notebook_id INTEGER NOT NULL,
             colaborador_nome TEXT NOT NULL,
             colaborador_setor TEXT,
@@ -331,7 +320,7 @@ def init_db():
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS schedules (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             notebook_id INTEGER NOT NULL,
             colaborador_nome TEXT NOT NULL,
             colaborador_setor TEXT,
@@ -344,14 +333,32 @@ def init_db():
         """
     )
 
+    # Tabela: Remanejamentos
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS remanejamentos (
+            id SERIAL PRIMARY KEY,
+            solicitante_nome TEXT NOT NULL,
+            solicitante_diretoria TEXT NOT NULL,
+            quantidade_equipamentos INTEGER NOT NULL,
+            entre_diretorias INTEGER DEFAULT 0,
+            diretoria_origem TEXT,
+            diretoria_destino TEXT,
+            data_remanejamento TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'agendado',
+            registrado_por TEXT
+        );
+        """
+    )
+
     # Tabela de Tickets (chamados)
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS tickets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             data_abertura TEXT NOT NULL,
             data_encerramento TEXT,
-            status TEXT NOT NULL, -- 'aberto' ou 'fechado'
+            status TEXT NOT NULL,
 
             tipo_equipamento TEXT,
             empresa TEXT,
@@ -371,11 +378,11 @@ def init_db():
         """
     )
 
-    # === NOVA TABELA: Empréstimos Fixos ===
+    # Tabela: Empréstimos Fixos
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS fixed_loans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             notebook_id INTEGER NOT NULL,
             colaborador_nome TEXT NOT NULL,
             data_emprestimo TEXT NOT NULL,
@@ -388,56 +395,48 @@ def init_db():
         """
     )
 
-# === NOVA TABELA: Usuários ===
+    # Tabela: Usuários
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             nome_completo TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'operador',
-            must_change_password INTEGER DEFAULT 1 -- <--- NOVO (1 = Sim, 0 = Não)
+            must_change_password INTEGER DEFAULT 1
         );
         """
     )
 
-    # Migração: Adiciona a coluna para quem já tem a tabela criada
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0;")
-    except sqlite3.OperationalError:
-        pass # A coluna já existe, segue o jogo
+    # Migrações com suporte nativo do Postgres (ADD COLUMN IF NOT EXISTS)
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password INTEGER DEFAULT 0;")
+    cur.execute("ALTER TABLE fixed_loans ADD COLUMN IF NOT EXISTS colaborador_setor TEXT;")
+    
+    cur.execute("ALTER TABLE loans ADD COLUMN IF NOT EXISTS registrado_por TEXT;")
+    cur.execute("ALTER TABLE loans ADD COLUMN IF NOT EXISTS recebido_por TEXT;")
+    cur.execute("ALTER TABLE fixed_loans ADD COLUMN IF NOT EXISTS registrado_por TEXT;")
+    cur.execute("ALTER TABLE fixed_loans ADD COLUMN IF NOT EXISTS recebido_por TEXT;")
+    cur.execute("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS aberto_por TEXT;")
+    cur.execute("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS fechado_por TEXT;")
 
     # Verifica se existe algum usuário. Se não existir, cria o Admin padrão.
     cur.execute("SELECT COUNT(*) AS total FROM users")
     if cur.fetchone()["total"] == 0:
-        # A senha do primeiro admin agora exigirá troca no primeiro login
         senha_criptografada = generate_password_hash("admin123")
         cur.execute(
             """
             INSERT INTO users (username, password_hash, nome_completo, role, must_change_password)
-            VALUES (?, ?, ?, 'admin', 1)
+            VALUES (%s, %s, %s, 'admin', 1)
             """,
             ("admin", senha_criptografada, "Administrador TI")
         )
 
-    # Tenta adicionar a coluna setor (se der erro é porque ela já existe, então ignoramos)
-    try:
-        cur.execute("ALTER TABLE fixed_loans ADD COLUMN colaborador_setor TEXT;")
-    except sqlite3.OperationalError:
-        pass
-
-    
     conn.commit()
     conn.close()
 
 
 def calcular_tempo_limite(data_hora_emprestimo_str: str):
-    """
-    Calcula quanto tempo falta (ou passou) até o limite das 18h
-    no dia do empréstimo.
-    Retorna (texto_exibicao, nivel_cor).
-    """
     try:
         dt_emprestimo = datetime.strptime(data_hora_emprestimo_str, "%Y-%m-%d %H:%M:%S")
     except ValueError:
@@ -473,7 +472,6 @@ def calcular_tempo_limite(data_hora_emprestimo_str: str):
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    # Se já estiver logado, manda pro dashboard
     if "user_id" in session:
         return redirect(url_for("dashboard"))
 
@@ -482,20 +480,18 @@ def login():
         password = request.form.get("password")
 
         conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE username = ?", (username,))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("SELECT * FROM users WHERE username = %s", (username,))
         user = cur.fetchone()
         conn.close()
 
-        # Verifica se o usuário existe e se a senha bate com o hash salvo
         if user and check_password_hash(user["password_hash"], password):
             session["user_id"] = user["id"]
             session["username"] = user["username"]
             session["user_nome"] = user["nome_completo"]
             session["user_role"] = user["role"]
-            session["must_change_password"] = user["must_change_password"] # <--- NOVO
+            session["must_change_password"] = user["must_change_password"]
             
-            # Se precisar mudar, vai direto pra tela de alteração
             if session["must_change_password"] == 1:
                 return redirect(url_for("alterar_senha"))
             
@@ -504,12 +500,11 @@ def login():
         else:
             flash("Usuário ou senha incorretos.", "error")
 
-    # Por padrão, vamos usar um template simples de login
     return render_template("login.html")
 
 @app.route("/logout")
 def logout():
-    session.clear() # Limpa tudo da sessão
+    session.clear()
     flash("Você saiu do sistema.", "success")
     return redirect(url_for("login"))
 
@@ -528,11 +523,10 @@ def alterar_senha():
             flash("A senha deve ter no mínimo 6 caracteres.", "error")
         else:
             conn = get_connection()
-            cur = conn.cursor()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
             hashed_pw = generate_password_hash(nova_senha)
-            # Atualiza a senha e diz que não precisa mais trocar
             cur.execute(
-                "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
+                "UPDATE users SET password_hash = %s, must_change_password = 0 WHERE id = %s",
                 (hashed_pw, session["user_id"])
             )
             conn.commit()
@@ -544,132 +538,49 @@ def alterar_senha():
 
     return render_template("alterar_senha.html")
 
-# Rotas DOP
-
-#@app.route("/rotas")#
-def lista_rotas():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT
-            id,
-            data_solicitacao,
-            solicitante,
-            unidade_origem,
-            prioridade,
-            destino,
-            descricao_volume,
-            status
-        FROM rotas
-        ORDER BY data_solicitacao DESC
-        """
-    )
-    rows = cur.fetchall()
-    conn.close()
-
-    rotas = []
-    for r in rows:
-        d = dict(r)
-        dt = datetime.strptime(d["data_solicitacao"], "%Y-%m-%d %H:%M:%S")
-        d["data_solicitacao_br"] = dt.strftime("%d/%m/%Y %H:%M")
-
-        label, css = mapear_prioridade(d.get("prioridade", ""))
-        d["prioridade_label"] = label
-        d["prioridade_css"] = css
-
-        rotas.append(d)
-
-    return render_template("rotas.html", rotas=rotas)
-
-
-# Rotas DOP - Email
-
+# ===================== ROTAS DOP =====================
 @app.route("/api/rotas_email", methods=["POST"])
-def api_rotas_email():
-    """
-    Endpoint chamado pelo Apps Script.
-    Recebe JSON com:
-      - solicitante
-      - unidade_origem
-      - prioridade
-      - destino
-      - descricao_volume
-    Grava na tabela rotas.
-    """
-    data = request.get_json(force=True)
+def receber_rotas_email():
+    dados = request.get_json()
+    if not dados:
+        return jsonify({"erro": "Nenhum dado recebido"}), 400
 
-    obrigatorios = [
-        "solicitante",
-        "unidade_origem",
-        "prioridade",
-        "destino",
-        "descricao_volume",
-    ]
-
-    for campo in obrigatorios:
-        if not data.get(campo):
-            return jsonify(
-                {"ok": False, "erro": f"Campo '{campo}' obrigatório"}
-            ), 400
-
-    # normaliza textos (tira espaços a mais)
-    solicitante = data["solicitante"].strip()
-    unidade_origem = data["unidade_origem"].strip()
-    prioridade = data["prioridade"].strip()
-    destino = data["destino"].strip()
-    descricao_volume = data["descricao_volume"].strip()
+    solicitante = dados.get("solicitante", "Não identificado")
+    unidade_origem = dados.get("unidade_origem", "Não identificado")
+    prioridade = dados.get("prioridade", "Baixa")
+    destino = dados.get("destino", "Não identificado")
+    descricao_volume = dados.get("descricao_volume", "")
+    
+    data_solicitacao = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     conn = get_connection()
-    cur = conn.cursor()
-
-    # data/hora que a rota entrou no sistema
-    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
     cur.execute(
         """
-        INSERT INTO rotas (
-            data_solicitacao,
-            solicitante,
-            unidade_origem,
-            prioridade,
-            destino,
-            descricao_volume,
-            status
-        )
-        VALUES (?, ?, ?, ?, ?, ?, 'pendente')
+        INSERT INTO rotas (solicitante, unidade_origem, prioridade, destino, descricao_volume, data_solicitacao, status)
+        VALUES (%s, %s, %s, %s, %s, %s, 'pendente')
         """,
-        (
-            agora,
-            solicitante,
-            unidade_origem,
-            prioridade,
-            destino,
-            descricao_volume,
-        ),
+        (solicitante, unidade_origem, prioridade, destino, descricao_volume, data_solicitacao)
     )
-
     conn.commit()
     conn.close()
 
-    return jsonify({"ok": True})
+    return jsonify({"mensagem": "Rota registrada com sucesso!"}), 201
 
-# Chamados
+# ===================== CHAMADOS =====================
 
 @app.route("/chamados/novo", methods=["GET", "POST"])
 def novo_chamado():
     if request.method == "POST":
         form = request.form
-
         data_abertura = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
         tipo_equipamento = form.get("tipo_equipamento", "").strip()
         empresa = form.get("empresa", "").strip()
         marca = form.get("marca", "").strip()
         modelo = form.get("modelo", "").strip()
         numero_serie = form.get("numero_serie", "").strip()
         defeito = form.get("defeito", "").strip()
-
         endereco = form.get("endereco", "").strip()
         cep = form.get("cep", "").strip()
         telefone = form.get("telefone", "").strip()
@@ -677,7 +588,6 @@ def novo_chamado():
         email = form.get("email", "").strip()
         observacoes = form.get("observacoes", "").strip()
 
-        # validação mínima
         if not tipo_equipamento or not numero_serie or not defeito:
             flash("Informe tipo de equipamento, número de série e defeito apresentado.", "error")
             return render_template(
@@ -688,7 +598,7 @@ def novo_chamado():
             )
 
         conn = get_connection()
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute(
             """
             INSERT INTO tickets (
@@ -707,7 +617,7 @@ def novo_chamado():
                 email,
                 observacoes
             )
-            VALUES (?, 'aberto', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, 'aberto', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 data_abertura,
@@ -731,7 +641,6 @@ def novo_chamado():
         flash("Chamado aberto com sucesso.", "success")
         return redirect(url_for("lista_chamados"))
 
-    # GET
     return render_template(
         "chamado_form.html",
         tipos=TIPO_EQUIPAMENTOS,
@@ -741,15 +650,15 @@ def novo_chamado():
 
 @app.route("/chamados")
 def lista_chamados():
-    status = request.args.get("status", "aberto")  # padrão: abertos
+    status = request.args.get("status", "aberto")
 
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     if status == "todos":
         cur.execute("SELECT * FROM tickets ORDER BY data_abertura DESC")
     else:
         cur.execute(
-            "SELECT * FROM tickets WHERE status = ? ORDER BY data_abertura DESC",
+            "SELECT * FROM tickets WHERE status = %s ORDER BY data_abertura DESC",
             (status,),
         )
     rows = cur.fetchall()
@@ -773,13 +682,13 @@ def lista_chamados():
 @app.route("/chamados/fechar/<int:ticket_id>", methods=["POST"])
 def fechar_chamado(ticket_id):
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cur.execute(
         """
         UPDATE tickets
-        SET status = 'fechado', data_encerramento = ?
-        WHERE id = ?
+        SET status = 'fechado', data_encerramento = %s
+        WHERE id = %s
         """,
         (agora, ticket_id),
     )
@@ -789,11 +698,10 @@ def fechar_chamado(ticket_id):
     flash("Chamado encerrado com sucesso.", "success")
     return redirect(url_for("lista_chamados"))
 
-
 @app.route("/termo/<int:loan_id>")
 def termo_opcoes(loan_id):
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute(
         """
         SELECT
@@ -805,7 +713,7 @@ def termo_opcoes(loan_id):
             n.modelo
         FROM loans l
         JOIN notebooks n ON n.id = l.notebook_id
-        WHERE l.id = ?
+        WHERE l.id = %s
         """,
         (loan_id,),
     )
@@ -827,7 +735,6 @@ def termo_opcoes(loan_id):
         data_br=data_br,
     )
 
-
 @app.route("/termo/<int:loan_id>/download")
 def baixar_termo(loan_id):
     caminho = gerar_termo_docx(loan_id)
@@ -841,14 +748,10 @@ def baixar_termo(loan_id):
         download_name=os.path.basename(caminho),
     )
 
-
 @app.route("/")
 def index():
-    # Se o usuário já estiver logado, joga ele pro Dashboard
     if "user_id" in session:
         return redirect(url_for("dashboard"))
-    
-    # Se não estiver logado, joga ele para a tela de Login naturalmente
     return redirect(url_for("login"))
 
 @app.route("/termo/<int:loan_id>/visualizar")
@@ -862,15 +765,13 @@ def visualizar_termo(loan_id):
         )
         return redirect(url_for("termo_opcoes", loan_id=loan_id))
 
-    # abre o PDF diretamente no navegador (sem forçar download)
     return send_file(pdf_path, mimetype="application/pdf")
 
-# Rotas - manual
-
+# ===================== ROTAS MANUAIS =====================
 @app.route("/rotas", methods=["GET", "POST"])
 def lista_rotas():
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     if request.method == "POST":
         solicitante = request.form.get("solicitante", "").strip()
@@ -894,7 +795,7 @@ def lista_rotas():
                     descricao_volume,
                     status
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 'pendente')
+                VALUES (%s, %s, %s, %s, %s, %s, 'pendente')
                 """,
                 (
                     data_solicitacao,
@@ -908,9 +809,8 @@ def lista_rotas():
             conn.commit()
             flash("Rota cadastrada com sucesso.", "success")
 
-        return redirect(url_for("lista_rotas"))
+        return redirect(url_for("rotas_manual"))
 
-    # GET -> lista rotas
     cur.execute(
         """
         SELECT
@@ -947,14 +847,12 @@ def lista_rotas():
         unidades=UNIDADES_ROTA,
     )
 
-
-
 @app.route("/rotas/enviar/<int:rota_id>", methods=["POST"])
 def marcar_rota_enviada(rota_id):
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute(
-        "UPDATE rotas SET status = 'enviada' WHERE id = ?",
+        "UPDATE rotas SET status = 'enviada' WHERE id = %s",
         (rota_id,),
     )
     conn.commit()
@@ -962,51 +860,45 @@ def marcar_rota_enviada(rota_id):
     flash("Rota marcada como enviada.", "success")
     return redirect(url_for("lista_rotas"))
 
-
-
 # ===================== CADASTRO / LISTA DE NOTEBOOKS =====================
-
 @app.route("/notebooks/novo", methods=["GET", "POST"])
 @tecnico_required
 def novo_notebook():
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     if request.method == "POST":
         serial = request.form.get("serial", "").strip()
         modelo = request.form.get("modelo", "").strip()
-        tipo_cadastro = request.form.get("tipo_cadastro") # 'rotativo' ou 'fixo'
+        tipo_cadastro = request.form.get("tipo_cadastro") 
 
         if not serial:
             flash("O número de série é obrigatório.", "error")
             conn.close()
             return redirect(url_for("novo_notebook"))
 
-        # Verifica se o serial já existe no banco
-        cur.execute("SELECT id, status FROM notebooks WHERE serial = ?", (serial,))
+        cur.execute("SELECT id, status FROM notebooks WHERE serial = %s", (serial,))
         existente = cur.fetchone()
         notebook_id = None
 
         if existente:
             if existente["status"] == "inativo":
-                # Reativa o notebook
-                cur.execute("UPDATE notebooks SET status = 'ativo', modelo = ? WHERE id = ?", (modelo, existente["id"]))
+                cur.execute("UPDATE notebooks SET status = 'ativo', modelo = %s WHERE id = %s", (modelo, existente["id"]))
                 notebook_id = existente["id"]
                 flash("Notebook reativado com sucesso!", "success")
             else:
-                flash("Já existe um notebook na base de ativos ou fixos com esse número de série.", "error")
+                flash("Já existe um notebook na base com esse número de série.", "error")
                 conn.close()
                 return redirect(url_for("novo_notebook"))
         else:
-            # Novo cadastro
-            cur.execute("INSERT INTO notebooks (serial, modelo, status) VALUES (?, ?, 'ativo')", (serial, modelo))
-            notebook_id = cur.lastrowid
+            # POSTGRES: RETURNING id
+            cur.execute("INSERT INTO notebooks (serial, modelo, status) VALUES (%s, %s, 'ativo') RETURNING id", (serial, modelo))
+            notebook_id = cur.fetchone()["id"]
             flash("Notebook cadastrado com sucesso!", "success")
 
-# Se o usuário escolheu "Fixo", já registra o empréstimo fixo e anexa o arquivo
         if tipo_cadastro == "fixo" and notebook_id:
             colaborador_nome = request.form.get("colaborador_nome", "").strip()
-            colaborador_setor = request.form.get("colaborador_setor", "").strip() # <--- NOVO
+            colaborador_setor = request.form.get("colaborador_setor", "").strip()
             data_emprestimo = request.form.get("data_emprestimo", "").strip()
             modem_4g = 1 if request.form.get("modem_4g") == "on" else 0
             modem_serial = request.form.get("modem_serial", "").strip() if modem_4g else ""
@@ -1020,32 +912,29 @@ def novo_notebook():
                 caminho_salvo = os.path.join(app.config['UPLOAD_FOLDER'], nome_arquivo_salvo)
                 arquivo.save(caminho_salvo)
 
-            # Grava na tabela de empréstimos fixos (AGORA COM SETOR)
+            usuario_logado = session.get("user_nome", "Sistema")
+
             cur.execute(
                 """
                 INSERT INTO fixed_loans (
                     notebook_id, colaborador_nome, colaborador_setor, data_emprestimo, 
-                    modem_4g, modem_serial, termo_arquivo, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ativo')
+                    modem_4g, modem_serial, termo_arquivo, status, registrado_por
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'ativo', %s)
                 """,
-                (notebook_id, colaborador_nome, colaborador_setor, data_emprestimo, modem_4g, modem_serial, nome_arquivo_salvo)
+                (notebook_id, colaborador_nome, colaborador_setor, data_emprestimo, modem_4g, modem_serial, nome_arquivo_salvo, usuario_logado)
             )
-            # Muda o status do equipamento para 'fixo'
-            cur.execute("UPDATE notebooks SET status = 'fixo' WHERE id = ?", (notebook_id,))
+            cur.execute("UPDATE notebooks SET status = 'fixo' WHERE id = %s", (notebook_id,))
             flash(f"Empréstimo fixo para {colaborador_nome} ({colaborador_setor}) registrado!", "success")
 
         conn.commit()
         conn.close()
         return redirect(url_for("novo_notebook"))
 
-    # ==================== GET (Renderiza as Duas Listas) ====================
-    # 1. Rotativos (apenas ativos e inativos)
     cur.execute(
         "SELECT id, serial, modelo, status FROM notebooks WHERE status IN ('ativo', 'inativo') ORDER BY status DESC, serial"
     )
     rotativos = cur.fetchall()
 
-# 2. Fixos (Agora puxando o f.colaborador_setor)
     cur.execute(
         """
         SELECT n.id as notebook_id, n.serial, n.modelo, 
@@ -1061,23 +950,23 @@ def novo_notebook():
 
     return render_template("notebook_form.html", rotativos=rotativos, fixos=fixos)
 
-# Rota para baixar o anexo (Adicione se ainda não tiver)
 @app.route("/emprestimos-fixos/termo/<filename>")
 def baixar_termo_fixo(filename):
     return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename), as_attachment=True)
 
-# Rota para devolver o Fixo e retorná-lo para os Rotativos
 @app.route("/emprestimos-fixos/devolver/<int:fixo_id>", methods=["POST"])
 def devolver_fixo(fixo_id):
+    usuario_logado = session.get("user_nome", "Sistema")        
     conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT notebook_id FROM fixed_loans WHERE id = ?", (fixo_id,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
+    cur.execute("UPDATE fixed_loans SET status = 'devolvido', recebido_por = %s WHERE id = %s", (usuario_logado, fixo_id,))
+    cur.execute("SELECT notebook_id FROM fixed_loans WHERE id = %s", (fixo_id,))
     row = cur.fetchone()
     
     if row:
         notebook_id = row["notebook_id"]
-        cur.execute("UPDATE fixed_loans SET status = 'devolvido' WHERE id = ?", (fixo_id,))
-        cur.execute("UPDATE notebooks SET status = 'ativo' WHERE id = ?", (notebook_id,))
+        cur.execute("UPDATE notebooks SET status = 'ativo' WHERE id = %s", (notebook_id,))
         conn.commit()
         flash("Equipamento devolvido! Agora ele é um notebook rotativo disponível no estoque.", "success")
         
@@ -1085,16 +974,14 @@ def devolver_fixo(fixo_id):
     return redirect(url_for("novo_notebook"))
 
 # ===================== AÇÕES ROTATIVOS =====================
-
 @app.route("/notebooks/remover/<int:notebook_id>", methods=["POST"])
 @tecnico_required
 def remover_notebook(notebook_id):
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # Verifica se há empréstimo ativo antes de inativar
     cur.execute(
-        "SELECT COUNT(*) AS total FROM loans WHERE notebook_id = ? AND status = 'emprestado'",
+        "SELECT COUNT(*) AS total FROM loans WHERE notebook_id = %s AND status = 'emprestado'",
         (notebook_id,),
     )
     em_uso = cur.fetchone()["total"]
@@ -1102,21 +989,20 @@ def remover_notebook(notebook_id):
     if em_uso > 0:
         flash("Não é possível inativar: notebook está com empréstimo rotativo ativo.", "error")
     else:
-        cur.execute("UPDATE notebooks SET status = 'inativo' WHERE id = ?", (notebook_id,))
+        cur.execute("UPDATE notebooks SET status = 'inativo' WHERE id = %s", (notebook_id,))
         conn.commit()
         flash("Notebook inativado com sucesso.", "success")
         
     conn.close()
     return redirect(url_for("novo_notebook"))
 
-
 @app.route("/notebooks/reativar/<int:notebook_id>", methods=["POST"])
 @tecnico_required
 def reativar_notebook(notebook_id):
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    cur.execute("UPDATE notebooks SET status = 'ativo' WHERE id = ?", (notebook_id,))
+    cur.execute("UPDATE notebooks SET status = 'ativo' WHERE id = %s", (notebook_id,))
     conn.commit()
     conn.close()
 
@@ -1124,12 +1010,11 @@ def reativar_notebook(notebook_id):
     return redirect(url_for("novo_notebook"))
 
 
-# ===================== EMPRÉSTIMO =====================
-
 @app.route("/emprestimo", methods=["GET", "POST"])
+@login_required
 def emprestimo():
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     if request.method == "POST":
         notebook_id = request.form.get("notebook_id")
@@ -1141,35 +1026,33 @@ def emprestimo():
             conn.close()
             return redirect(url_for("emprestimo"))
 
-        # Verifica se notebook já está emprestado
         cur.execute(
-            "SELECT COUNT(*) AS total FROM loans WHERE notebook_id = ? AND status = 'emprestado'",
+            "SELECT COUNT(*) AS total FROM loans WHERE notebook_id = %s AND status = 'emprestado'",
             (notebook_id,),
         )
         ja_emprestado = cur.fetchone()["total"]
 
         if ja_emprestado > 0:
-            flash(
-                "Este notebook já está emprestado. Não é possível emprestar novamente.",
-                "error",
-            )
+            flash("Este notebook já está emprestado.", "error")
             conn.close()
             return redirect(url_for("emprestimo"))
 
         data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        usuario_logado = session.get("user_nome", "Sistema")
 
+        # POSTGRES: RETURNING id
         cur.execute(
             """
             INSERT INTO loans (
                 notebook_id, colaborador_nome, colaborador_setor,
-                data_hora_emprestimo, status
+                data_hora_emprestimo, status, registrado_por
             )
-            VALUES (?, ?, ?, ?, 'emprestado')
+            VALUES (%s, %s, %s, %s, 'emprestado', %s) RETURNING id
             """,
-            (notebook_id, colaborador_nome, colaborador_setor, data_hora),
+            (notebook_id, colaborador_nome, colaborador_setor, data_hora, usuario_logado),
         )
 
-        loan_id = cur.lastrowid
+        loan_id = cur.fetchone()["id"]
 
         conn.commit()
         conn.close()
@@ -1177,9 +1060,6 @@ def emprestimo():
         flash("Empréstimo registrado com sucesso.", "success")
         return redirect(url_for("termo_opcoes", loan_id=loan_id))
 
-
-
-    # GET → notebooks ativos e não emprestados
     cur.execute(
         """
         SELECT id, serial, modelo
@@ -1198,22 +1078,24 @@ def emprestimo():
 
 
 # ===================== DEVOLUÇÃO =====================
-
 @app.route("/devolver/<int:loan_id>")
+@login_required
 def devolver(loan_id):
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
+    usuario_logado = session.get("user_nome", "Sistema")
     data_hora_dev = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     cur.execute(
         """
         UPDATE loans
         SET status = 'devolvido',
-            data_hora_devolucao = ?
-        WHERE id = ? AND status = 'emprestado'
+            data_hora_devolucao = %s,
+            recebido_por = %s
+        WHERE id = %s AND status = 'emprestado'
         """,
-        (data_hora_dev, loan_id),
+        (data_hora_dev, usuario_logado, loan_id),
     )
     conn.commit()
     conn.close()
@@ -1223,13 +1105,11 @@ def devolver(loan_id):
 
 
 # ===================== AGENDAMENTOS =====================
-
 @app.route("/agendamentos/emprestar/<int:schedule_id>", methods=["GET", "POST"])
 def emprestar_agendamento(schedule_id):
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # Busca o agendamento
     cur.execute(
         """
         SELECT
@@ -1242,7 +1122,7 @@ def emprestar_agendamento(schedule_id):
             inclui_som,
             status
         FROM schedules
-        WHERE id = ?
+        WHERE id = %s
         """,
         (schedule_id,),
     )
@@ -1253,7 +1133,6 @@ def emprestar_agendamento(schedule_id):
         flash("Agendamento não encontrado ou já utilizado/cancelado.", "error")
         return redirect(url_for("agendamentos"))
 
-    # Datas bonitinhas (já usadas no GET)
     dt_i = datetime.strptime(sched["data_inicio"], "%Y-%m-%d %H:%M:%S")
     dt_f = datetime.strptime(sched["data_fim"], "%Y-%m-%d %H:%M:%S")
     agendamento = dict(sched)
@@ -1265,12 +1144,11 @@ def emprestar_agendamento(schedule_id):
 
         if not notebook_id:
             conn.close()
-            flash("Selecione um notebook para efetivar o empréstimo.", "error")
+            flash("Selecione um notebook.", "error")
             return redirect(url_for("emprestar_agendamento", schedule_id=schedule_id))
 
-        # Confere se o notebook existe e está ativo
         cur.execute(
-            "SELECT id, status FROM notebooks WHERE id = ?",
+            "SELECT id, status FROM notebooks WHERE id = %s",
             (notebook_id,),
         )
         nb = cur.fetchone()
@@ -1279,26 +1157,24 @@ def emprestar_agendamento(schedule_id):
             flash("Notebook selecionado não está disponível.", "error")
             return redirect(url_for("emprestar_agendamento", schedule_id=schedule_id))
 
-        # Confere se não está emprestado
         cur.execute(
-            "SELECT COUNT(*) AS total FROM loans WHERE notebook_id = ? AND status = 'emprestado'",
+            "SELECT COUNT(*) AS total FROM loans WHERE notebook_id = %s AND status = 'emprestado'",
             (notebook_id,),
         )
         em_uso = cur.fetchone()["total"]
         if em_uso > 0:
             conn.close()
-            flash("Notebook selecionado já está emprestado no momento.", "error")
+            flash("Notebook selecionado já está emprestado.", "error")
             return redirect(url_for("emprestar_agendamento", schedule_id=schedule_id))
 
-        # Confere se não tem conflito de agendamento nesse horário
         cur.execute(
             """
             SELECT COUNT(*) AS total
             FROM schedules
-            WHERE notebook_id = ?
+            WHERE notebook_id = %s
               AND status IN ('agendado', 'em_uso')
-              AND id <> ?
-              AND NOT (data_fim <= ? OR data_inicio >= ?)
+              AND id <> %s
+              AND NOT (data_fim <= %s OR data_inicio >= %s)
             """,
             (
                 notebook_id,
@@ -1310,11 +1186,12 @@ def emprestar_agendamento(schedule_id):
         conflito = cur.fetchone()["total"]
         if conflito > 0:
             conn.close()
-            flash("Notebook selecionado possui outro agendamento nesse horário.", "error")
+            flash("Notebook selecionado possui outro agendamento.", "error")
             return redirect(url_for("emprestar_agendamento", schedule_id=schedule_id))
 
-        # ---- Cria o empréstimo de fato ----
         data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # POSTGRES: RETURNING id
         cur.execute(
             """
             INSERT INTO loans (
@@ -1324,7 +1201,7 @@ def emprestar_agendamento(schedule_id):
                 data_hora_emprestimo,
                 status
             )
-            VALUES (?, ?, ?, ?, 'emprestado')
+            VALUES (%s, %s, %s, %s, 'emprestado') RETURNING id
             """,
             (
                 notebook_id,
@@ -1333,11 +1210,10 @@ def emprestar_agendamento(schedule_id):
                 data_hora,
             ),
         )
-        loan_id = cur.lastrowid  # <- ID do empréstimo criado
+        loan_id = cur.fetchone()["id"]
 
-        # Atualiza o agendamento para 'em_uso' e guarda o notebook escolhido
         cur.execute(
-            "UPDATE schedules SET status = 'em_uso', notebook_id = ? WHERE id = ?",
+            "UPDATE schedules SET status = 'em_uso', notebook_id = %s WHERE id = %s",
             (notebook_id, schedule_id),
         )
 
@@ -1345,13 +1221,8 @@ def emprestar_agendamento(schedule_id):
         conn.close()
 
         flash("Empréstimo efetuado a partir do agendamento.", "success")
-        # Agora vai para a mesma tela de termo do fluxo normal
         return redirect(url_for("termo_opcoes", loan_id=loan_id))
 
-    # ============ MÉTODO GET: monta lista de notebooks disponíveis ============
-
-    # (resto do código GET que monta notebooks_disponiveis e renderiza
-    #  efeti_var_agendamento.html permanece igual)
     cur.execute(
         "SELECT id, serial, modelo FROM notebooks WHERE status = 'ativo' ORDER BY serial"
     )
@@ -1359,7 +1230,7 @@ def emprestar_agendamento(schedule_id):
     notebooks_disponiveis = []
     for nb in notebooks:
         cur.execute(
-            "SELECT COUNT(*) AS total FROM loans WHERE notebook_id = ? AND status = 'emprestado'",
+            "SELECT COUNT(*) AS total FROM loans WHERE notebook_id = %s AND status = 'emprestado'",
             (nb["id"],),
         )
         em_uso = cur.fetchone()["total"]
@@ -1370,10 +1241,10 @@ def emprestar_agendamento(schedule_id):
             """
             SELECT COUNT(*) AS total
             FROM schedules
-            WHERE notebook_id = ?
+            WHERE notebook_id = %s
               AND status IN ('agendado', 'em_uso')
-              AND id <> ?
-              AND NOT (data_fim <= ? OR data_inicio >= ?)
+              AND id <> %s
+              AND NOT (data_fim <= %s OR data_inicio >= %s)
             """,
             (
                 nb["id"],
@@ -1391,7 +1262,7 @@ def emprestar_agendamento(schedule_id):
     conn.close()
 
     if not notebooks_disponiveis:
-        flash("Nenhum notebook disponível para esse intervalo no momento.", "error")
+        flash("Nenhum notebook disponível para esse intervalo.", "error")
         return redirect(url_for("agendamentos"))
 
     return render_template(
@@ -1400,16 +1271,12 @@ def emprestar_agendamento(schedule_id):
         notebooks_disponiveis=notebooks_disponiveis,
     )
 
-
-
-
 @app.route("/agendamentos", methods=["GET", "POST"])
 def agendamentos():
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     if request.method == "POST":
-        # NÃO pegamos mais notebook_id do formulário
         colaborador_nome = request.form.get("colaborador_nome", "").strip()
         colaborador_setor = request.form.get("colaborador_setor", "").strip()
         inicio_str = request.form.get("data_inicio", "").strip()
@@ -1417,12 +1284,12 @@ def agendamentos():
         inclui_som = 1 if request.form.get("inclui_som") == "on" else 0
 
         if not (colaborador_nome and inicio_str and fim_str):
-            flash("Preencha o nome do colaborador e os horários de início e fim.", "error")
+            flash("Preencha o nome do colaborador e os horários.", "error")
             conn.close()
             return redirect(url_for("agendamentos"))
 
         try:
-            dt_inicio = datetime.fromisoformat(inicio_str)  # 2025-11-24T13:30
+            dt_inicio = datetime.fromisoformat(inicio_str) 
             dt_fim = datetime.fromisoformat(fim_str)
         except ValueError:
             flash("Formato de data/hora inválido.", "error")
@@ -1437,18 +1304,16 @@ def agendamentos():
         inicio_db = dt_inicio.strftime("%Y-%m-%d %H:%M:%S")
         fim_db = dt_fim.strftime("%Y-%m-%d %H:%M:%S")
 
-        # 🔹 1) pega todos os notebooks ativos
         cur.execute(
             "SELECT id, serial, modelo FROM notebooks WHERE status = 'ativo' ORDER BY id"
         )
         notebooks = cur.fetchall()
 
         if not notebooks:
-            flash("Não há notebooks ativos cadastrados para agendar.", "error")
+            flash("Não há notebooks ativos cadastrados.", "error")
             conn.close()
             return redirect(url_for("agendamentos"))
 
-        # 🔹 2) tenta encontrar um notebook livre no intervalo
         notebook_escolhido_id = None
 
         for nb in notebooks:
@@ -1456,9 +1321,9 @@ def agendamentos():
                 """
                 SELECT COUNT(*) AS total
                 FROM schedules
-                WHERE notebook_id = ?
+                WHERE notebook_id = %s
                   AND status = 'agendado'
-                  AND NOT (data_fim <= ? OR data_inicio >= ?)
+                  AND NOT (data_fim <= %s OR data_inicio >= %s)
                 """,
                 (nb["id"], inicio_db, fim_db),
             )
@@ -1467,23 +1332,21 @@ def agendamentos():
                 notebook_escolhido_id = nb["id"]
                 break
 
-        # 🔹 3) se nenhum notebook estiver livre, bloqueia o agendamento
         if notebook_escolhido_id is None:
             flash(
-                "Não há notebooks disponíveis nesse intervalo. Todos já estão agendados.",
+                "Não há notebooks disponíveis nesse intervalo.",
                 "error",
             )
             conn.close()
             return redirect(url_for("agendamentos"))
 
-        # 🔹 4) grava o agendamento usando o notebook escolhido automaticamente
         cur.execute(
             """
             INSERT INTO schedules (
                 notebook_id, colaborador_nome, colaborador_setor,
                 data_inicio, data_fim, inclui_som, status
             )
-            VALUES (?, ?, ?, ?, ?, ?, 'agendado')
+            VALUES (%s, %s, %s, %s, %s, %s, 'agendado')
             """,
             (
                 notebook_escolhido_id,
@@ -1500,14 +1363,9 @@ def agendamentos():
         flash("Agendamento criado com sucesso!", "success")
         return redirect(url_for("agendamentos"))
     
-    
-    # ================== BLOCO GET (pode manter o seu, mas já deixo alinhado) ==================
-
-    # notebooks ativos só pra mostrar capacidade (opcional)
     cur.execute("SELECT COUNT(*) AS total FROM notebooks WHERE status = 'ativo'")
     total_notebooks = cur.fetchone()["total"]
 
-    # Próximos agendamentos
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cur.execute(
         """
@@ -1524,7 +1382,7 @@ def agendamentos():
         FROM schedules s
         JOIN notebooks n ON n.id = s.notebook_id
         WHERE s.status = 'agendado'
-          AND s.data_fim >= ?
+          AND s.data_fim >= %s
         ORDER BY s.data_inicio
         """,
         (agora,),
@@ -1549,17 +1407,16 @@ def agendamentos():
         proximos_agendamentos=proximos,
     )
 
-
 @app.route("/agendamentos/cancelar/<int:schedule_id>")
 def cancelar_agendamento(schedule_id):
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     cur.execute(
         """
         UPDATE schedules
         SET status = 'cancelado'
-        WHERE id = ? AND status = 'agendado'
+        WHERE id = %s AND status = 'agendado'
         """,
         (schedule_id,),
     )
@@ -1569,19 +1426,15 @@ def cancelar_agendamento(schedule_id):
     flash("Agendamento cancelado.", "success")
     return redirect(url_for("agendamentos"))
 
-
 # ===================== DASHBOARD =====================
-
 @app.route("/dashboard")
 def dashboard():
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # --- Total de notebooks ativos (estoque) ---
     cur.execute("SELECT COUNT(*) AS total FROM notebooks WHERE status = 'ativo'")
     total_notebooks = cur.fetchone()["total"]
 
-    # --- Empréstimos ativos ---
     cur.execute(
         """
         SELECT
@@ -1610,18 +1463,19 @@ def dashboard():
     total_emprestados = len(emprestimos_ativos)
     disponiveis = total_notebooks - total_emprestados
 
-    # --- Histórico recente (últimos 10) ---
     cur.execute(
         """
         SELECT
-            l.id,
-            n.serial,
+            l.id, 
+            n.serial, 
             n.modelo,
-            l.colaborador_nome,
+            l.colaborador_nome, 
             l.colaborador_setor,
-            l.data_hora_emprestimo,
-            l.data_hora_devolucao,
-            l.status
+            l.data_hora_emprestimo, 
+            l.data_hora_devolucao, 
+            l.status,
+            l.registrado_por, 
+            l.recebido_por
         FROM loans l
         JOIN notebooks n ON n.id = l.notebook_id
         ORDER BY l.id DESC
@@ -1630,7 +1484,6 @@ def dashboard():
     )
     historico = cur.fetchall()
 
-    # --- Próximos agendamentos (para o dashboard) ---
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cur.execute(
         """
@@ -1646,7 +1499,7 @@ def dashboard():
         FROM schedules s
         JOIN notebooks n ON n.id = s.notebook_id
         WHERE s.status = 'agendado'
-          AND s.data_fim >= ?
+          AND s.data_fim >= %s
         ORDER BY s.data_inicio
         LIMIT 10
         """,
@@ -1654,7 +1507,6 @@ def dashboard():
     )
     rows_sched = cur.fetchall()
 
-    # --- Chamados em aberto (KPI + lista resumida) ---
     cur.execute(
         """
         SELECT COUNT(*) AS total
@@ -1680,7 +1532,6 @@ def dashboard():
     )
     rows_chamados = cur.fetchall()
 
-    # --- Rotas recentes para o card "Rotas solicitadas" ---
     cur.execute(
         """
         SELECT
@@ -1700,11 +1551,25 @@ def dashboard():
     )
     rows_rotas = cur.fetchall()
 
+    cur.execute("""
+        SELECT * FROM remanejamentos 
+        WHERE status = 'agendado' 
+        ORDER BY data_remanejamento ASC 
+        LIMIT 5
+    """)
+    remanejamentos_pendentes = []
+    for r in cur.fetchall():
+        d = dict(r)
+        try:
+            dt = datetime.strptime(d["data_remanejamento"], "%Y-%m-%d")
+            d["data_br"] = dt.strftime("%d/%m/%Y")
+        except: d["data_br"] = d["data_remanejamento"]
+        remanejamentos_pendentes.append(d)
+
     conn.close()
 
     hoje = datetime.now().date()
 
-    # --- Monta proximos_agendamentos ---
     proximos_agendamentos = []
     for r in rows_sched:
         d = dict(r)
@@ -1715,7 +1580,6 @@ def dashboard():
         d["eh_hoje"] = (dt_i.date() == hoje)
         proximos_agendamentos.append(d)
 
-    # --- Monta chamados_abertos ---
     chamados_abertos = []
     for r in rows_chamados:
         d = dict(r)
@@ -1724,7 +1588,6 @@ def dashboard():
         d["dias_aberto"] = (hoje - dt.date()).days
         chamados_abertos.append(d)
 
-    # --- Monta rotas_dashboard ---
     rotas_dashboard = []
     for r in rows_rotas:
         d = dict(r)
@@ -1737,7 +1600,6 @@ def dashboard():
         label, css = mapear_prioridade(d.get("prioridade", ""))
         d["prioridade_label"] = label
         d["prioridade_css"] = css
-
         rotas_dashboard.append(d)
 
     return render_template(
@@ -1751,167 +1613,116 @@ def dashboard():
         total_chamados_abertos=total_chamados_abertos,
         chamados_abertos=chamados_abertos,
         rotas_dashboard=rotas_dashboard,
+        remanejamentos_pendentes=remanejamentos_pendentes,
     )
-
 
 @app.route("/tv")
 def tv_dashboard():
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # Total de notebooks
-    cur.execute("SELECT COUNT(*) AS total FROM notebooks WHERE status = 'ativo'")
-    total_notebooks = cur.fetchone()["total"]
+    # 1. Indicadores de Notebooks (Apenas Rotativos)
+    cur.execute("SELECT COUNT(*) FROM notebooks WHERE status = 'ativo'")
+    total_ativos = cur.fetchone()[0] or 0
+    cur.execute("SELECT COUNT(*) FROM loans WHERE status = 'emprestado'")
+    total_emprestados = cur.fetchone()[0] or 0
+    total_disponiveis = total_ativos - total_emprestados
 
-    # Empréstimos ativos
-    cur.execute(
-        """
-        SELECT
-            l.id,
-            n.serial,
-            n.modelo,
-            l.colaborador_nome,
-            l.colaborador_setor,
-            l.data_hora_emprestimo
-        FROM loans l
-        JOIN notebooks n ON n.id = l.notebook_id
-        WHERE l.status = 'emprestado'   
-        ORDER BY l.data_hora_emprestimo DESC
-        """
-    )
-    rows_ativos = cur.fetchall()
-
-    emprestimos_ativos = []
-    for r in rows_ativos:
-        d = dict(r)
-        texto_limite, nivel_limite = calcular_tempo_limite(d["data_hora_emprestimo"])
-        d["tempo_limite"] = texto_limite
-        d["nivel_limite"] = nivel_limite
-        emprestimos_ativos.append(d)
-
-    total_emprestados = len(emprestimos_ativos)
-    disponiveis = total_notebooks - total_emprestados
-
-    # Agendamentos
-    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cur.execute(
-        """
-        SELECT
-            s.id,
-            n.serial,
-            n.modelo,
-            s.colaborador_nome,
-            s.colaborador_setor,
-            s.data_inicio,
-            s.data_fim,
-            s.inclui_som
-        FROM schedules s
-        JOIN notebooks n ON n.id = s.notebook_id
-        WHERE s.status = 'agendado'
-          AND s.data_fim >= ?
-        ORDER BY s.data_inicio
-        """,
-        (agora,),
-    )
-    rows_sched = cur.fetchall()
-
-    proximos_agendamentos = []
-    hoje = datetime.now().date()
+    hoje = date.today()
     amanha = hoje + timedelta(days=1)
+    agora_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    for r in rows_sched:
+    # 2. Próximos Agendamentos (Notebooks)
+    # Adicionamos o "s.inclui_som" na busca do banco
+    cur.execute("""
+        SELECT n.modelo, s.colaborador_nome, s.data_inicio, s.inclui_som 
+        FROM schedules s JOIN notebooks n ON n.id = s.notebook_id 
+        WHERE s.status = 'agendado' AND s.data_fim >= %s 
+        ORDER BY s.data_inicio ASC LIMIT 4
+    """, (agora_str,))
+    
+    prox_agendamentos = []
+    for r in cur.fetchall():
         d = dict(r)
-        dt_i = datetime.strptime(d["data_inicio"], "%Y-%m-%d %H:%M:%S")
-        dt_f = datetime.strptime(d["data_fim"], "%Y-%m-%d %H:%M:%S")
-        d["data_inicio_br"] = dt_i.strftime("%d/%m/%Y %H:%M")
-        d["data_fim_br"] = dt_f.strftime("%d/%m/%Y %H:%M")
+        val_data = d['data_inicio'].replace('T', ' ') # Padroniza o T do HTML
+        
+        # Verifica se a string de hoje ou amanhã está dentro da data
+        d['eh_hoje'] = str(hoje) in val_data
+        d['eh_amanha'] = str(amanha) in val_data
+        
+        # Formata bonitinho para a tela
+        try:
+            dt_obj = datetime.strptime(val_data[:16], "%Y-%m-%d %H:%M")
+            d['data_formatada'] = dt_obj.strftime("%d/%m às %H:%M")
+        except:
+            d['data_formatada'] = val_data
+            
+        prox_agendamentos.append(d)
 
-        if dt_i.date() == hoje:
-            d["dia_label"] = "HOJE"
-            d["classe_dia"] = "hoje"
-        elif dt_i.date() == amanha:
-            d["dia_label"] = "AMANHÃ"
-            d["classe_dia"] = "amanha"
-        else:
-            d["dia_label"] = dt_i.strftime("%d/%m")
-            d["classe_dia"] = "futuro"
-
-        proximos_agendamentos.append(d)
-
-    # Chamados em aberto
-    cur.execute(
-        """
-        SELECT
-            id,
-            tipo_equipamento,
-            numero_serie,
-            empresa,
-            data_abertura,
-            status
-        FROM tickets
-        WHERE status = 'aberto'
-        ORDER BY data_abertura
-        """
-    )
-    rows_tickets = cur.fetchall()
-
-    chamados_abertos = []
-    for r in rows_tickets:
+    # 3. Próximos Remanejamentos
+    cur.execute("""
+        SELECT solicitante_nome, data_remanejamento, quantidade_equipamentos 
+        FROM remanejamentos WHERE status = 'agendado' 
+        ORDER BY data_remanejamento ASC LIMIT 4
+    """)
+    prox_remanejamentos = []
+    for r in cur.fetchall():
         d = dict(r)
-        dt_ab = datetime.strptime(d["data_abertura"], "%Y-%m-%d %H:%M:%S")
-        d["data_abertura_br"] = dt_ab.strftime("%d/%m/%Y %H:%M")
-        dias = (hoje - dt_ab.date()).days
-        d["dias_aberto"] = dias
-        chamados_abertos.append(d)
+        val_data = d['data_remanejamento']
+        
+        d['eh_hoje'] = str(hoje) in val_data
+        d['eh_amanha'] = str(amanha) in val_data
+        
+        try:
+            dt_obj = datetime.strptime(val_data, "%Y-%m-%d")
+            d['data_formatada'] = dt_obj.strftime("%d/%m/%Y")
+        except:
+            d['data_formatada'] = val_data
+            
+        prox_remanejamentos.append(d)
 
-    # Rotas para TV (últimas 10)
-    cur.execute(
-        """
-        SELECT
-            id,
-            data_solicitacao,
-            solicitante,
-            unidade_origem,
-            prioridade,
-            destino,
-            descricao_volume,
-            status
-        FROM rotas
-        WHERE status = 'pendente'
-        ORDER BY data_solicitacao DESC
-        LIMIT 10
-        """
-    )
-    rows_rotas_tv = cur.fetchall()
+    # 4. Históricos (Últimos 5 de cada)
+    cur.execute("SELECT colaborador_nome, data_hora_emprestimo, status FROM loans ORDER BY id DESC LIMIT 5")
+    hist_loans = cur.fetchall()
+    
+    cur.execute("SELECT solicitante_nome, data_remanejamento, status FROM remanejamentos ORDER BY id DESC LIMIT 5")
+    hist_reman = cur.fetchall()
 
-    rotas_tv = []
-    for r in rows_rotas_tv:
-        d = dict(r)
-        dt = datetime.strptime(d["data_solicitacao"], "%Y-%m-%d %H:%M:%S")
-        d["data_solicitacao_br"] = dt.strftime("%d/%m/%Y %H:%M")
+    cur.execute("SELECT solicitante, data_solicitacao, status FROM rotas ORDER BY id DESC LIMIT 5")
+    hist_rotas = cur.fetchall()
 
-        label, css = mapear_prioridade(d.get("prioridade", ""))
-        d["prioridade_label"] = label
-        d["prioridade_css"] = css
+    cur.execute("SELECT tipo_equipamento, data_abertura, status FROM tickets ORDER BY id DESC LIMIT 5")
+    hist_tickets = cur.fetchall()
 
-        # <-- ESSA LINHA TEM QUE ESTAR DENTRO DO FOR
-        rotas_tv.append(d)
+    # 5. Dados para Gráficos
+    # Notebooks por setor
+    cur.execute("SELECT colaborador_setor, COUNT(*) as qtd FROM loans WHERE status = 'emprestado' GROUP BY colaborador_setor")
+    res_l = cur.fetchall()
+    labels_loans = [r['colaborador_setor'] or "N/I" for r in res_l]
+    values_loans = [r['qtd'] for r in res_l]
+
+    # Remanejamentos por setor
+    cur.execute("SELECT solicitante_diretoria, COUNT(*) as qtd FROM remanejamentos GROUP BY solicitante_diretoria")
+    res_r = cur.fetchall()
+    labels_rem = [r['solicitante_diretoria'] or "N/I" for r in res_r]
+    values_rem = [r['qtd'] for r in res_r]
 
     conn.close()
-
     return render_template(
         "tv.html",
-        body_class="tv-mode",
-        total_notebooks=total_notebooks,
         total_emprestados=total_emprestados,
-        disponiveis=disponiveis,
-        emprestimos_ativos=emprestimos_ativos,
-        proximos_agendamentos=proximos_agendamentos,
-        chamados_abertos=chamados_abertos,
-        rotas_tv=rotas_tv,
+        total_disponiveis=total_disponiveis,
+        prox_agendamentos=prox_agendamentos,
+        prox_remanejamentos=prox_remanejamentos,
+        hist_loans=hist_loans,
+        hist_reman=hist_reman,
+        hist_rotas=hist_rotas,
+        hist_tickets=hist_tickets,
+        labels_loans=labels_loans,
+        values_loans=values_loans,
+        labels_rem=labels_rem,
+        values_rem=values_rem
     )
-
-
 
 @app.route("/relatorio/emprestimo")
 @tecnico_required
@@ -1920,11 +1731,10 @@ def relatorio_emprestimo():
     data_fim = request.args.get("data_fim")
     setor = request.args.get("setor") or ""
     status = request.args.get("status") or "todos"
-    export = request.args.get("export")  # emprestimos / agendamentos / chamados / rotas / all
+    export = request.args.get("export") 
 
     hoje = datetime.now().date()
 
-    # Se não vier data, usa últimos 7 dias
     if data_inicio:
         dt_ini = datetime.strptime(data_inicio, "%Y-%m-%d").date()
     else:
@@ -1935,29 +1745,24 @@ def relatorio_emprestimo():
     else:
         dt_fim = hoje
 
-    # strings para o form
     data_inicio_str = dt_ini.strftime("%Y-%m-%d")
     data_fim_str = dt_fim.strftime("%Y-%m-%d")
 
-    # limites para SQL (dia inteiro)
     dt_ini_sql = f"{data_inicio_str} 00:00:00"
     dt_fim_sql = f"{data_fim_str} 23:59:59"
 
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # =========================
-    # 1) EMPRÉSTIMOS
-    # =========================
-    where = ["l.data_hora_emprestimo BETWEEN ? AND ?"]
+    where = ["l.data_hora_emprestimo BETWEEN %s AND %s"]
     params = [dt_ini_sql, dt_fim_sql]
 
     if setor:
-        where.append("l.colaborador_setor = ?")
+        where.append("l.colaborador_setor = %s")
         params.append(setor)
 
     if status and status != "todos":
-        where.append("l.status = ?")
+        where.append("l.status = %s")
         params.append(status)
 
     sql_loans = f"""
@@ -1978,9 +1783,6 @@ def relatorio_emprestimo():
     cur.execute(sql_loans, params)
     rows_loans = cur.fetchall()
 
-    # =========================
-    # 2) AGENDAMENTOS
-    # =========================
     cur.execute(
         """
         SELECT
@@ -1995,16 +1797,13 @@ def relatorio_emprestimo():
             s.status
         FROM schedules s
         JOIN notebooks n ON n.id = s.notebook_id
-        WHERE s.data_inicio BETWEEN ? AND ?
+        WHERE s.data_inicio BETWEEN %s AND %s
         ORDER BY s.data_inicio DESC
         """,
         (dt_ini_sql, dt_fim_sql),
     )
     rows_ag = cur.fetchall()
 
-    # =========================
-    # 3) CHAMADOS
-    # =========================
     cur.execute(
         """
         SELECT
@@ -2018,16 +1817,13 @@ def relatorio_emprestimo():
             data_abertura,
             status
         FROM tickets
-        WHERE data_abertura BETWEEN ? AND ?
+        WHERE data_abertura BETWEEN %s AND %s
         ORDER BY data_abertura DESC
         """,
         (dt_ini_sql, dt_fim_sql),
     )
     rows_ch = cur.fetchall()
 
-    # =========================
-    # 4) ROTAS
-    # =========================
     cur.execute(
         """
         SELECT
@@ -2040,7 +1836,7 @@ def relatorio_emprestimo():
             descricao_volume,
             status
         FROM rotas
-        WHERE data_solicitacao BETWEEN ? AND ?
+        WHERE data_solicitacao BETWEEN %s AND %s
         ORDER BY data_solicitacao DESC
         """,
         (dt_ini_sql, dt_fim_sql),
@@ -2049,9 +1845,6 @@ def relatorio_emprestimo():
 
     conn.close()
 
-    # ---------- Monta listas para tela + CSV ----------
-
-    # Empréstimos
     emprestimos = []
     for r in rows_loans:
         d = dict(r)
@@ -2064,7 +1857,6 @@ def relatorio_emprestimo():
             d["devolucao_br"] = "-"
         emprestimos.append(d)
 
-    # Agendamentos
     agendamentos = []
     for r in rows_ag:
         d = dict(r)
@@ -2074,7 +1866,6 @@ def relatorio_emprestimo():
         d["data_fim_br"] = df.strftime("%d/%m/%Y %H:%M")
         agendamentos.append(d)
 
-    # Chamados
     chamados = []
     for r in rows_ch:
         d = dict(r)
@@ -2083,7 +1874,6 @@ def relatorio_emprestimo():
         d["dias_aberto"] = (hoje - dt_ab.date()).days
         chamados.append(d)
 
-    # Rotas
     rotas = []
     for r in rows_rotas:
         d = dict(r)
@@ -2098,192 +1888,81 @@ def relatorio_emprestimo():
     def csv_emprestimos():
         si = io.StringIO()
         w = csv.writer(si, delimiter=";")
-        w.writerow(
-            [
-                "Nº Série",
-                "Modelo",
-                "Colaborador",
-                "Setor",
-                "Empréstimo",
-                "Devolução",
-                "Status",
-            ]
-        )
+        w.writerow(["Nº Série", "Modelo", "Colaborador", "Setor", "Empréstimo", "Devolução", "Status"])
         for e in emprestimos:
-            w.writerow(
-                [
-                    e["serial"],
-                    e["modelo"],
-                    e["colaborador_nome"],
-                    e["colaborador_setor"],
-                    e["emprestimo_br"],
-                    e["devolucao_br"],
-                    e["status"],
-                ]
-            )
+            w.writerow([e["serial"], e["modelo"], e["colaborador_nome"], e["colaborador_setor"], e["emprestimo_br"], e["devolucao_br"], e["status"]])
         return si.getvalue()
 
     def csv_agendamentos():
         si = io.StringIO()
         w = csv.writer(si, delimiter=";")
-        w.writerow(
-            [
-                "Nº Série",
-                "Modelo",
-                "Colaborador",
-                "Setor",
-                "Início",
-                "Fim",
-                "Som",
-                "Status",
-            ]
-        )
+        w.writerow(["Nº Série", "Modelo", "Colaborador", "Setor", "Início", "Fim", "Som", "Status"])
         for a in agendamentos:
-            w.writerow(
-                [
-                    a["serial"],
-                    a["modelo"],
-                    a["colaborador_nome"],
-                    a["colaborador_setor"],
-                    a["data_inicio_br"],
-                    a["data_fim_br"],
-                    "Com som" if a["inclui_som"] else "Sem som",
-                    a["status"],
-                ]
-            )
+            w.writerow([a["serial"], a["modelo"], a["colaborador_nome"], a["colaborador_setor"], a["data_inicio_br"], a["data_fim_br"], "Com som" if a["inclui_som"] else "Sem som", a["status"]])
         return si.getvalue()
 
     def csv_chamados():
         si = io.StringIO()
         w = csv.writer(si, delimiter=";")
-        w.writerow(
-            [
-                "Tipo equipamento",
-                "Nº Série",
-                "Empresa",
-                "Marca",
-                "Modelo",
-                "Defeito",
-                "Data abertura",
-                "Status",
-                "Dias em aberto",
-            ]
-        )
+        w.writerow(["Tipo equipamento", "Nº Série", "Empresa", "Marca", "Modelo", "Defeito", "Data abertura", "Status", "Dias em aberto"])
         for c in chamados:
-            w.writerow(
-                [
-                    c["tipo_equipamento"],
-                    c["numero_serie"],
-                    c["empresa"],
-                    c["marca"],
-                    c["modelo"],
-                    c["defeito"],
-                    c["data_abertura_br"],
-                    c["status"],
-                    c["dias_aberto"],
-                ]
-            )
+            w.writerow([c["tipo_equipamento"], c["numero_serie"], c["empresa"], c["marca"], c["modelo"], c["defeito"], c["data_abertura_br"], c["status"], c["dias_aberto"]])
         return si.getvalue()
 
     def csv_rotas():
         si = io.StringIO()
         w = csv.writer(si, delimiter=";")
-        w.writerow(
-            [
-                "Data solicitação",
-                "Solicitante",
-                "Unidade de origem",
-                "Prioridade",
-                "Destino",
-                "Descrição do volume",
-                "Status",
-            ]
-        )
+        w.writerow(["Data solicitação", "Solicitante", "Unidade de origem", "Prioridade", "Destino", "Descrição do volume", "Status"])
         for r in rotas:
-            w.writerow(
-                [
-                    r["data_solicitacao_br"],
-                    r["solicitante"],
-                    r["unidade_origem"],
-                    r["prioridade_label"],
-                    r["destino"],
-                    r["descricao_volume"],
-                    r["status"],
-                ]
-            )
+            w.writerow([r["data_solicitacao_br"], r["solicitante"], r["unidade_origem"], r["prioridade_label"], r["destino"], r["descricao_volume"], r["status"]])
         return si.getvalue()
 
     # =========================
     # EXPORT CSV / ZIP
     # =========================
     if export:
-        # Export individual
         if export == "emprestimos":
             csv_data = csv_emprestimos()
             resp = make_response(csv_data)
             resp.headers["Content-Type"] = "text/csv; charset=utf-8"
-            resp.headers[
-                "Content-Disposition"
-            ] = "attachment; filename=relatorio_emprestimos.csv"
+            resp.headers["Content-Disposition"] = "attachment; filename=relatorio_emprestimos.csv"
             return resp
 
         if export == "agendamentos":
             csv_data = csv_agendamentos()
             resp = make_response(csv_data)
             resp.headers["Content-Type"] = "text/csv; charset=utf-8"
-            resp.headers[
-                "Content-Disposition"
-            ] = "attachment; filename=relatorio_agendamentos.csv"
+            resp.headers["Content-Disposition"] = "attachment; filename=relatorio_agendamentos.csv"
             return resp
 
         if export == "chamados":
             csv_data = csv_chamados()
             resp = make_response(csv_data)
             resp.headers["Content-Type"] = "text/csv; charset=utf-8"
-            resp.headers[
-                "Content-Disposition"
-            ] = "attachment; filename=relatorio_chamados.csv"
+            resp.headers["Content-Disposition"] = "attachment; filename=relatorio_chamados.csv"
             return resp
 
         if export == "rotas":
             csv_data = csv_rotas()
             resp = make_response(csv_data)
             resp.headers["Content-Type"] = "text/csv; charset=utf-8"
-            resp.headers[
-                "Content-Disposition"
-            ] = "attachment; filename=relatorio_rotas.csv"
+            resp.headers["Content-Disposition"] = "attachment; filename=relatorio_rotas.csv"
             return resp
 
-        # Export TUDO (ZIP com 4 CSVs)
         if export == "all":
             mem_zip = io.BytesIO()
             with zipfile.ZipFile(mem_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr(
-                    "relatorio_emprestimos.csv",
-                    csv_emprestimos().encode("utf-8-sig"),
-                )
-                zf.writestr(
-                    "relatorio_agendamentos.csv",
-                    csv_agendamentos().encode("utf-8-sig"),
-                )
-                zf.writestr(
-                    "relatorio_chamados.csv",
-                    csv_chamados().encode("utf-8-sig"),
-                )
-                zf.writestr(
-                    "relatorio_rotas.csv",
-                    csv_rotas().encode("utf-8-sig"),
-                )
+                zf.writestr("relatorio_emprestimos.csv", csv_emprestimos().encode("utf-8-sig"))
+                zf.writestr("relatorio_agendamentos.csv", csv_agendamentos().encode("utf-8-sig"))
+                zf.writestr("relatorio_chamados.csv", csv_chamados().encode("utf-8-sig"))
+                zf.writestr("relatorio_rotas.csv", csv_rotas().encode("utf-8-sig"))
 
             mem_zip.seek(0)
             resp = make_response(mem_zip.getvalue())
             resp.headers["Content-Type"] = "application/zip"
-            resp.headers[
-                "Content-Disposition"
-            ] = "attachment; filename=relatorios_completos.zip"
+            resp.headers["Content-Disposition"] = "attachment; filename=relatorios_completos.zip"
             return resp
 
-    # Se não for export, renderiza a página normal
     return render_template(
         "relatorio_emprestimo.html",
         emprestimos=emprestimos,
@@ -2302,14 +1981,13 @@ def relatorio_emprestimo():
 @admin_required
 def gerenciar_usuarios():
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     if request.method == "POST":
         username = request.form.get("username").strip()
         nome_completo = request.form.get("nome_completo").strip()
         role = request.form.get("role")
         
-        # A SENHA AGORA É FIXA (REMOVIDO DO FORM)
         senha_padrao = "Rios@ude1234"
 
         if not username or not nome_completo or not role:
@@ -2318,12 +1996,12 @@ def gerenciar_usuarios():
             try:
                 hashed_pw = generate_password_hash(senha_padrao)
                 cur.execute(
-                    "INSERT INTO users (username, password_hash, nome_completo, role, must_change_password) VALUES (?, ?, ?, ?, 1)",
+                    "INSERT INTO users (username, password_hash, nome_completo, role, must_change_password) VALUES (%s, %s, %s, %s, 1)",
                     (username, hashed_pw, nome_completo, role)
                 )
                 conn.commit()
                 flash(f"Usuário cadastrado com sucesso! A senha inicial é {senha_padrao}", "success")
-            except sqlite3.IntegrityError:
+            except IntegrityError:
                 flash("Este nome de usuário (login) já existe no sistema.", "error")
 
     cur.execute("SELECT id, username, nome_completo, role FROM users ORDER BY role, nome_completo")
@@ -2332,17 +2010,16 @@ def gerenciar_usuarios():
 
     return render_template("usuarios.html", usuarios=usuarios)
 
-# ROTA PARA RESETAR SENHA (ADICIONE ABAIXO DA DELETAR)
 @app.route("/usuarios/resetar/<int:user_id>", methods=["POST"])
 @admin_required
 def resetar_senha_usuario(user_id):
     conn = get_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     senha_padrao = "Rios@ude1234"
     hashed_pw = generate_password_hash(senha_padrao)
     
     cur.execute(
-        "UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?", 
+        "UPDATE users SET password_hash = %s, must_change_password = 1 WHERE id = %s", 
         (hashed_pw, user_id)
     )
     conn.commit()
@@ -2358,16 +2035,115 @@ def remover_usuario(user_id):
         return redirect(url_for("gerenciar_usuarios"))
         
     conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
     conn.commit()
     conn.close()
     flash("Usuário removido com sucesso.", "success")
     return redirect(url_for("gerenciar_usuarios"))
- 
 
+# ===================== REMANEJAMENTOS =====================
+
+@app.route("/remanejamentos", methods=["GET", "POST"])
+@login_required
+def remanejamentos():
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    if request.method == "POST":
+        solicitante_nome = request.form.get("solicitante_nome", "").strip()
+        solicitante_diretoria = request.form.get("solicitante_diretoria", "").strip()
+        
+        try:
+            quantidade = int(request.form.get("quantidade_equipamentos", 0))
+        except ValueError:
+            quantidade = 0
+            
+        entre_diretorias = 1 if request.form.get("entre_diretorias") == "on" else 0
+        diretoria_origem = request.form.get("diretoria_origem", "").strip()
+        diretoria_destino = request.form.get("diretoria_destino", "").strip()
+        data_remanejamento = request.form.get("data_remanejamento", "").strip()
+
+        usuario_logado = session.get("user_nome", "Sistema")
+
+        if not (solicitante_nome and solicitante_diretoria and quantidade > 0 and data_remanejamento):
+            flash("Preencha todos os campos obrigatórios.", "error")
+        else:
+            cur.execute(
+                """
+                INSERT INTO remanejamentos (
+                    solicitante_nome, solicitante_diretoria, quantidade_equipamentos,
+                    entre_diretorias, diretoria_origem, diretoria_destino,
+                    data_remanejamento, status, registrado_por
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'agendado', %s)
+                """,
+                (solicitante_nome, solicitante_diretoria, quantidade, entre_diretorias,
+                 diretoria_origem, diretoria_destino, data_remanejamento, usuario_logado)
+            )
+            conn.commit()
+            flash("Remanejamento agendado com sucesso!", "success")
+
+        conn.close()
+        return redirect(url_for("remanejamentos"))   
+
+    # ==========================================
+    # BLOCO GET: Listar e Calcular Resumos (KPIs)
+    # ==========================================
+    cur.execute("SELECT * FROM remanejamentos ORDER BY data_remanejamento DESC")
+    rows = cur.fetchall()
+    
+    lista_remanejamentos = []
+    total_agendados = 0
+    total_concluidos = 0
+
+    for r in rows:
+        d = dict(r)
+        try:
+            dt = datetime.strptime(d["data_remanejamento"], "%Y-%m-%d")
+            d["data_br"] = dt.strftime("%d/%m/%Y")
+        except ValueError:
+            d["data_br"] = d["data_remanejamento"]
+            
+        # Conta os status para os cartõezinhos do topo
+        if d["status"] == "agendado":
+            total_agendados += 1
+        elif d["status"] == "concluído":
+            total_concluidos += 1
+            
+        lista_remanejamentos.append(d)
+
+    total_remanejamentos = len(lista_remanejamentos)
+    conn.close()
+
+
+    
+    # Manda as variáveis calculadas direto para o HTML
+    return render_template("remanejamentos.html", 
+                           remanejamentos=lista_remanejamentos,
+                           total_agendados=total_agendados,
+                           total_concluidos=total_concluidos,
+                           total_remanejamentos=total_remanejamentos)
+
+@app.route("/remanejamentos/acao/<int:id_rem>/<acao>", methods=["POST"])
+def acao_remanejamento(id_rem, acao):
+    # Verifica se a ação é válida
+    if acao not in ['concluir', 'cancelar']:
+        flash("Ação inválida.", "error")
+        return redirect(url_for("remanejamentos"))
+    
+    novo_status = 'concluído' if acao == 'concluir' else 'cancelado'
+    
+    # Atualiza o banco de dados
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE remanejamentos SET status = %s WHERE id = %s", (novo_status, id_rem))
+    conn.commit()
+    conn.close()
+    
+    flash(f"Remanejamento {novo_status} com sucesso.", "success")
+    return redirect(url_for("remanejamentos"))
+ 
       
 if __name__ == "__main__":
     init_db()
     app.run(host="0.0.0.0", port=5000, debug=False)
-

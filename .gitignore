@@ -1,0 +1,4 @@
+notebooks.db
+__pycache__/
+termos_gerados/
+venv/

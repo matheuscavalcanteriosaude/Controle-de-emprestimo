@@ -1,334 +1,278 @@
 {% extends "base.html" %}
-
-{% block extra_head %}
-  <!-- Atualiza a página a cada 30 segundos -->
-  <meta http-equiv="refresh" content="30">
-  
-  <style>
-    /* ========== CSS EXCLUSIVO PARA O MODO TV ========== */
-    /* Esconde as barras de rolagem para dar cara de painel nativo */
-    ::-webkit-scrollbar {
-      display: none;
-    }
-    
-    .tv-mode main {
-      padding-top: 0;
-      max-width: 100%;
-      padding: 20px 40px;
-    }
-
-    /* Cabeçalho do Painel com Relógio */
-    .tv-header-panel {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-      padding-bottom: 10px;
-      border-bottom: 3px solid #e5e7eb;
-    }
-    .tv-header-panel h2 {
-      font-size: 2.2rem;
-      margin: 0;
-      color: #1f2937;
-      font-weight: 600;
-    }
-    .tv-clock {
-      font-size: 2.8rem;
-      font-weight: 700;
-      color: #4f46e5;
-      font-variant-numeric: tabular-nums;
-    }
-
-    /* Aumentando os KPIs para a TV */
-    .tv-kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 20px;
-      margin-bottom: 25px;
-    }
-    .tv-kpi-card {
-      background: #ffffff;
-      border-radius: 12px;
-      padding: 20px;
-      border-left: 6px solid #4f46e5;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    }
-    .tv-kpi-card.warning { border-left-color: #dc2626; }
-    .tv-kpi-card.success { border-left-color: #059669; }
-    
-    .tv-kpi-label {
-      font-size: 1.2rem;
-      color: #6b7280;
-      margin: 0 0 5px 0;
-      text-transform: uppercase;
-      font-weight: 600;
-    }
-    .tv-kpi-value {
-      font-size: 3.5rem;
-      font-weight: 700;
-      color: #111827;
-      margin: 0;
-      line-height: 1;
-    }
-
-    /* Layout em 2 colunas gigantes */
-    .tv-layout {
-      display: grid;
-      grid-template-columns: 1.1fr 1fr;
-      gap: 30px;
-    }
-
-    /* Ajuste das tabelas para leitura de longe */
-    .tv-section-title {
-      font-size: 1.5rem;
-      font-weight: 600;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: baseline;
-      gap: 15px;
-    }
-    .tv-section-sub {
-      font-size: 1.1rem;
-      color: #ef4444;
-      font-weight: 500;
-    }
-    
-    .tv-table-card {
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-      padding: 15px;
-      margin-bottom: 25px;
-    }
-    
-    .tv-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    .tv-table th {
-      font-size: 1.2rem;
-      background: #f8fafc;
-      padding: 14px;
-      text-align: left;
-      color: #475569;
-    }
-    .tv-table td {
-      font-size: 1.25rem;
-      padding: 14px;
-      border-bottom: 1px solid #f1f5f9;
-      color: #1e293b;
-    }
-    .tv-table tr:last-child td { border-bottom: none; }
-    
-    .tv-subtext {
-      display: block;
-      font-size: 1.05rem;
-      color: #64748b;
-      margin-top: 4px;
-    }
-
-    /* Aumentando Badges para TV */
-    .tv-badge {
-      padding: 6px 12px;
-      border-radius: 8px;
-      font-size: 1.1rem;
-      font-weight: 600;
-      display: inline-block;
-    }
-  </style>
-{% endblock %}
-
-{% block title %}Painel de Operações - Service Desk{% endblock %}
-
 {% block content %}
-<div class="tv-header-panel">
-  <h2>Painel de Operações - TI</h2>
-  <!-- Relógio Dinâmico -->
-  <div class="tv-clock" id="clock">00:00:00</div>
-</div>
+<style>
+    /* Tema Claro - Clean & Moderno */
+    body { background-color: #f4f7f6; color: #333; }
+    .tv-container { padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    
+    /* Cartões de Cima (KPIs) */
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 25px; }
+    .kpi-card { 
+        background: #ffffff; 
+        padding: 20px; 
+        border-radius: 8px; 
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03); 
+        border: 1px solid #e0e4e8;
+        border-top: 4px solid #3498db; 
+    }
+    .kpi-card h5 { color: #6c757d; font-size: 0.85rem; text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
+    .kpi-card .value { font-size: 2.5rem; font-weight: 700; margin: 0; color: #2c3e50; }
+    
+    /* Grid Principal */
+    .main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+    .dashboard-card { 
+        background: #ffffff; 
+        border-radius: 8px; 
+        padding: 20px; 
+        margin-bottom: 20px; 
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03); 
+        border: 1px solid #e0e4e8; 
+    }
+    .card-title { 
+        border-bottom: 1px solid #e0e4e8; 
+        padding-bottom: 12px; 
+        margin-bottom: 15px; 
+        color: #2c3e50; 
+        font-weight: 600; 
+        display: flex; 
+        align-items: center; 
+        gap: 10px; 
+        font-size: 1.1rem; 
 
-<!-- KPIs do topo -->
-<div class="tv-kpi-grid">
-  <div class="tv-kpi-card">
-    <p class="tv-kpi-label">Estoque (Ativos)</p>
-    <p class="tv-kpi-value">{{ total_notebooks }}</p>
-  </div>
-  <div class="tv-kpi-card">
-    <p class="tv-kpi-label">Emprestados</p>
-    <p class="tv-kpi-value" style="color: #d97706;">{{ total_emprestados }}</p>
-  </div>
-  <div class="tv-kpi-card success">
-    <p class="tv-kpi-label">Disponíveis</p>
-    <p class="tv-kpi-value" style="color: #059669;">{{ disponiveis }}</p>
-  </div>
-  <div class="tv-kpi-card warning">
-    <p class="tv-kpi-label">Chamados Abertos</p>
-    <p class="tv-kpi-value" style="color: #dc2626;">{{ chamados_abertos | length }}</p>
-  </div>
-</div>
+        /* Destaque para os cards principais */
+    .highlight-card {
+        background: #ffffff;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 8px 24px rgba(52, 152, 219, 0.15); /* Sombra azulada mais forte */
+        border: 1px solid #c5d9e8;
+        border-top: 4px solid #3498db; /* Borda azul em cima */
+    }
+    .highlight-card.warning-theme {
+        box-shadow: 0 8px 24px rgba(243, 156, 18, 0.15); /* Sombra amarelada */
+        border: 1px solid #f9eacb;
+        border-top: 4px solid #f39c12; /* Borda amarela em cima */
+    }
 
-<!-- LAYOUT EM 2 COLUNAS -->
-<div class="tv-layout">
-  
-  <!-- COLUNA ESQUERDA: Empréstimos + Chamados -->
-  <div>
-    <!-- Empréstimos Ativos -->
-    <div class="tv-section-title">
-      <span style="color: #d97706;">Empréstimos Rotativos</span>
-      <span class="tv-section-sub">⚠️ Devolução limite 18h</span>
-    </div>
-    <div class="tv-table-card" style="border-left: 5px solid #f59e0b;">
-      <table class="tv-table">
-        <thead>
-          <tr>
-            <th>Equipamento</th>
-            <th>Colaborador / Setor</th>
-            <th>Limite</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for e in emprestimos_ativos %}
-            <tr>
-              <td>
-                <strong>{{ e.serial }}</strong>
-                <span class="tv-subtext">{{ e.data_hora_emprestimo }}</span>
-              </td>
-              <td>
-                <strong>{{ e.colaborador_nome }}</strong>
-                <span class="tv-subtext">{{ e.colaborador_setor or '-' }}</span>
-              </td>
-              <td>
-                <span class="tv-badge deadline-badge {{ e.nivel_limite }}">
-                  {{ e.tempo_limite }}
-                </span>
-              </td>
-            </tr>
-          {% else %}
-            <tr><td colspan="3" style="text-align: center;">Nenhum notebook rotativo emprestado.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    /* Etiquetas Coloridas */
+    .badge-hoje { background-color: #e74c3c; color: white; padding: 3px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: bold; margin-left: 8px; text-transform: uppercase; letter-spacing: 0.5px;}
+    .badge-amanha { background-color: #f39c12; color: white; padding: 3px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: bold; margin-left: 8px; text-transform: uppercase; letter-spacing: 0.5px;}
+    .badge-som { background-color: #e8f8f5; color: #16a085; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; border: 1px solid #1abc9c; margin-top: 4px; display: inline-block;}
+    }
 
-    <!-- Chamados em aberto -->
-    <div class="tv-section-title">
-      <span style="color: #dc2626;">Chamados em Aberto</span>
-    </div>
-    <div class="tv-table-card" style="border-left: 5px solid #dc2626;">
-      <table class="tv-table">
-        <thead>
-          <tr>
-            <th>Equipamento</th>
-            <th>Empresa</th>
-            <th>Em Aberto</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for c in chamados_abertos %}
-            <tr>
-              <td>
-                <strong>{{ c.tipo_equipamento or '-' }}</strong>
-                <span class="tv-subtext">S/N: {{ c.numero_serie or '-' }}</span>
-              </td>
-              <td>{{ c.empresa or '-' }}</td>
-              <td style="color: #dc2626; font-weight: 700;">{{ c.dias_aberto }} dia(s)</td>
-            </tr>
-          {% else %}
-            <tr><td colspan="3" style="text-align: center;">Nenhum chamado aberto.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
+    /* Tabelas Mini */
+    .mini-table { width: 100%; font-size: 0.9rem; border-collapse: collapse; }
+    .mini-table th { color: #495057; text-align: left; padding: 10px 8px; border-bottom: 2px solid #e0e4e8; font-weight: 600; }
+    .mini-table td { padding: 10px 8px; border-bottom: 1px solid #f0f2f5; color: #333; }
+    .mini-table tr:last-child td { border-bottom: none; }
+    
+    /* Gráficos */
+    .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .chart-box { height: 260px; }
 
-  <!-- COLUNA DIREITA: Agendamentos + Rotas -->
-  <div>
-    <!-- Agendamentos -->
-    <div class="tv-section-title">
-      <span style="color: #4f46e5;">Próximos Agendamentos</span>
-    </div>
-    <div class="tv-table-card" style="border-left: 5px solid #4f46e5;">
-      <table class="tv-table">
-        <thead>
-          <tr>
-            <th>Colaborador</th>
-            <th>Início</th>
-            <th>Fim</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for a in proximos_agendamentos %}
-            <tr style="{% if a.dia_label == 'HOJE' %}background-color: #fef3c7;{% endif %}">
-              <td>
-                <strong>{{ a.colaborador_nome }}</strong>
-                {% if a.dia_label == 'HOJE' %}
-                  <span class="tv-badge badge-hoje" style="margin-left: 10px;">HOJE</span>
-                {% elif a.dia_label == 'AMANHÃ' %}
-                  <span class="tv-badge badge-amanha" style="margin-left: 10px;">AMANHÃ</span>
-                {% endif %}
-                {% if a.inclui_som %}<span title="Com Som">🔊</span>{% endif %}
-                <span class="tv-subtext">{{ a.colaborador_setor or '-' }}</span>
-              </td>
-              <td>{{ a.data_inicio_br }}</td>
-              <td>{{ a.data_fim_br }}</td>
-            </tr>
-          {% else %}
-            <tr><td colspan="3" style="text-align: center;">Nenhum agendamento futuro.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    /* Sessões do Histórico */
+    .hist-section-title { 
+        background-color: #f8f9fa; 
+        padding: 5px 10px; 
+        border-radius: 4px; 
+        font-size: 0.8rem; 
+        color: #495057; 
+        margin-top: 15px; 
+        margin-bottom: 5px;
+    }
+
+    /* Esconde menu se quiser tela cheia na TV */
+     nav, footer { display: none !important; }
+</style>
+
+<div class="tv-container">
+    <div class="kpi-row">
+        <div class="kpi-card" style="border-top-color: #3498db;">
+            <h5>Notebooks em Uso</h5>
+            <div class="value">{{ total_emprestados }}</div>
+            <small class="text-muted">Equipamentos rotativos</small>
+        </div>
+        <div class="kpi-card" style="border-top-color: #2ecc71;">
+            <h5>Disponíveis p/ Empréstimo</h5>
+            <div class="value">{{ total_disponiveis }}</div>
+            <small class="text-muted">Prontos no estoque</small>
+        </div>
+        <div class="kpi-card" style="border-top-color: #f39c12;">
+            <h5>Agendamentos Pendentes</h5>
+            <div class="value">{{ prox_agendamentos|length + prox_remanejamentos|length }}</div>
+            <small class="text-muted">Notebooks & Remanejamentos</small>
+        </div>
+        <div class="kpi-card" style="border-top-color: #e74c3c;">
+            <h5>Chamados Recentes</h5>
+            <div class="value">{{ hist_tickets|length }}</div>
+            <small class="text-muted">Últimas aberturas</small>
+        </div>
     </div>
 
-    <!-- Rotas solicitadas -->
-    <div class="tv-section-title">
-      <span style="color: #059669;">Rotas Solicitadas (DOP)</span>
-    </div>
-    <div class="tv-table-card" style="border-left: 5px solid #059669;">
-      <table class="tv-table">
-        <thead>
-          <tr>
-            <th>Solicitante / Unidade</th>
-            <th>Destino / Prioridade</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for rota in rotas_tv %}
-            <tr>
-              <td>
-                <strong>{{ rota.solicitante }}</strong>
-                <span class="tv-subtext">{{ rota.unidade_origem }}</span>
-              </td>
-              <td>
-                <strong>{{ rota.destino }}</strong>
-                <div style="margin-top: 5px;">
-                  <span class="tv-badge badge-prioridade {{ rota.prioridade_css }}">
-                    {{ rota.prioridade_label }}
-                  </span>
+    <div class="main-grid">
+        <div>
+<div class="row">
+                <div class="col-md-6">
+                    <div class="highlight-card">
+                        <div class="card-title"><i class="fas fa-laptop text-primary"></i> Próx. Agendamentos Notebook</div>
+                        <table class="mini-table">
+                            <thead><tr><th>Colaborador</th><th>Data</th></tr></thead>
+                            <tbody>
+                                {% for a in prox_agendamentos %}
+                                <tr>
+                                    <td>
+                                        <div class="fw-bold">{{ a.colaborador_nome }}</div>
+                                        {% if a.inclui_som %}
+                                            <span class="badge-som"><i class="fas fa-volume-up"></i> Com Som</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="text-primary fw-bold">{{ a.data_formatada }}</span>
+                                        {% if a.eh_hoje %}
+                                            <span class="badge-hoje">Hoje</span>
+                                        {% elif a.eh_amanha %}
+                                            <span class="badge-amanha">Amanhã</span>
+                                         {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="2" class="text-muted text-center py-3">Nenhum agendamento.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-              </td>
-            </tr>
-          {% else %}
-            <tr><td colspan="2" style="text-align: center;">Nenhuma rota recente.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
+                
+                <div class="col-md-6">
+                    <div class="highlight-card warning-theme">
+                        <div class="card-title"><i class="fas fa-exchange-alt text-warning"></i> Próx. Remanejamentos</div>
+                        <table class="mini-table">
+                            <thead><tr><th>Responsável</th><th>Qtd</th><th>Data</th></tr></thead>
+                            <tbody>
+                                {% for r in prox_remanejamentos %}
+                                <tr>
+                                    <td class="fw-bold">{{ r.solicitante_nome }}</td>
+                                    <td><span class="badge bg-secondary">{{ r.quantidade_equipamentos }}</span></td>
+                                    <td>
+                                        <span class="text-warning fw-bold text-dark">{{ r.data_formatada }}</span>
+                                        {% if r.eh_hoje %}
+                                            <span class="badge-hoje">Hoje</span>
+                                        {% elif r.eh_amanha %}
+                                            <span class="badge-amanha">Amanhã</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="3" class="text-muted text-center py-3">Nenhum remanejamento.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
+            <div class="dashboard-card">
+                <div class="card-title"><i class="fas fa-chart-bar text-success"></i> Visão Setorial</div>
+                <div class="charts-row">
+                    <div class="chart-box"><canvas id="chartSetorLoans"></canvas></div>
+                    <div class="chart-box"><canvas id="chartSetorReman"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="dashboard-card" style="max-height: 700px; overflow-y: auto;">
+                <div class="card-title"><i class="fas fa-history text-secondary"></i> Atividades Recentes</div>
+                
+                <div class="hist-section-title fw-bold">EMPRÉSTIMOS</div>
+                <table class="mini-table mb-2">
+                    {% for h in hist_loans %}
+                    <tr><td>{{ h.colaborador_nome }}</td><td class="text-end text-muted small">{{ h.status }}</td></tr>
+                    {% else %}
+                    <tr><td class="text-muted small">Sem dados.</td></tr>
+                    {% endfor %}
+                </table>
+
+                <div class="hist-section-title fw-bold">REMANEJAMENTOS</div>
+                <table class="mini-table mb-2">
+                    {% for h in hist_reman %}
+                    <tr><td>{{ h.solicitante_nome }}</td><td class="text-end text-muted small">{{ h.status }}</td></tr>
+                    {% else %}
+                    <tr><td class="text-muted small">Sem dados.</td></tr>
+                    {% endfor %}
+                </table>
+
+                <div class="hist-section-title fw-bold">ROTAS</div>
+                <table class="mini-table mb-2">
+                    {% for h in hist_rotas %}
+                    <tr><td>{{ h.solicitante }}</td><td class="text-end text-muted small">{{ h.status }}</td></tr>
+                    {% else %}
+                    <tr><td class="text-muted small">Sem dados.</td></tr>
+                    {% endfor %}
+                </table>
+
+                <div class="hist-section-title fw-bold">CHAMADOS</div>
+                <table class="mini-table">
+                    {% for h in hist_tickets %}
+                    <tr><td>{{ h.tipo_equipamento }}</td><td class="text-end text-muted small">{{ h.status }}</td></tr>
+                    {% else %}
+                    <tr><td class="text-muted small">Sem dados.</td></tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
-<!-- SCRIPT DO RELÓGIO DA TV -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-  function updateClock() {
-    const now = new Date();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    document.getElementById('clock').textContent = hours + ':' + minutes + ':' + seconds;
-  }
-  
-  // Atualiza a cada segundo
-  setInterval(updateClock, 1000);
-  updateClock(); // Chama imediatamente ao carregar
+    // Gráfico de Notebooks por Setor
+    new Chart(document.getElementById('chartSetorLoans'), {
+        type: 'doughnut',
+        data: {
+            labels: {{ labels_loans | tojson }},
+            datasets: [{
+                data: {{ values_loans | tojson }},
+                backgroundColor: ['#3498db', '#9b59b6', '#e74c3c', '#f1c40f', '#1abc9c', '#34495e']
+            }]
+        },
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false,
+            plugins: { 
+                title: { display: true, text: 'NOTEBOOKS EM USO', color: '#2c3e50', font: {size: 14} },
+                legend: { position: 'bottom', labels: { boxWidth: 12 } }
+            }
+        }
+    });
+
+    // Gráfico de Remanejamentos por Setor
+    new Chart(document.getElementById('chartSetorReman'), {
+        type: 'bar',
+        data: {
+            labels: {{ labels_rem | tojson }},
+            datasets: [{
+                label: 'Movimentações',
+                data: {{ values_rem | tojson }},
+                backgroundColor: '#2ecc71',
+                borderRadius: 4
+            }]
+        },
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false,
+            plugins: { 
+                title: { display: true, text: 'REMANEJAMENTOS POR SETOR', color: '#2c3e50', font: {size: 14} },
+                legend: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: true, ticks: { precision: 0 } }
+            }
+        }
+    });
+
+    // Auto-refresh a cada 2 minutos (120000 ms)
+    setTimeout(function(){ window.location.reload(); }, 120000);
 </script>
 {% endblock %}

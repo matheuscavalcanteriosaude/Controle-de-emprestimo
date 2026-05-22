@@ -64,7 +64,7 @@
         <!-- VISÍVEL APENAS PARA ADMIN, SUPERVISOR E TÉCNICO -->
         {% if session.get('user_role') in ['admin', 'supervisor', 'tecnico'] %}
         <a href="{{ url_for('novo_notebook') }}" class="nav-link {% if request.endpoint == 'novo_notebook' %}is-active{% endif %}">
-          <span class="nav-icon">📦</span> Estoque & Fixos
+          <span class="nav-icon">📦</span> Notebooks
         </a>
         {% endif %}
 
@@ -75,6 +75,13 @@
         <a href="{{ url_for('lista_rotas') }}" class="nav-link {% if request.endpoint == 'lista_rotas' %}is-active{% endif %}">
           <span class="nav-icon">🚗</span> Rotas
         </a>
+
+        <!-- VISÍVEL APENAS PARA ADMIN, SUPERVISOR E TÉCNICO -->
+        {% if session.get('user_role') in ['admin', 'supervisor', 'tecnico'] %}
+        <a href="{{ url_for('remanejamentos') }}" class="nav-link {% if request.endpoint == 'remanejamentos' %}is-active{% endif %}">
+          <span class="nav-icon">📑</span> Remanejamentos
+        </a>
+        {% endif %}
 
         <!-- VISÍVEL APENAS PARA ADMIN, SUPERVISOR E TÉCNICO -->
         {% if session.get('user_role') in ['admin', 'supervisor', 'tecnico'] %}
