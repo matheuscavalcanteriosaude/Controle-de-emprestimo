@@ -1707,6 +1707,15 @@ def tv_dashboard():
     labels_rem = [r['solicitante_diretoria'] or "N/I" for r in res_r]
     values_rem = [r['qtd'] for r in res_r]
 
+    # Busca quem está com equipamento emprestado NESTE MOMENTO
+    cur.execute("""
+        SELECT colaborador_nome, data_hora_emprestimo 
+        FROM loans 
+        WHERE status = 'emprestado' 
+        ORDER BY data_hora_emprestimo DESC
+    """)
+    emprestimos_ativos = cur.fetchall()
+
     conn.close()
     return render_template(
         "tv.html",
