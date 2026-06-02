@@ -2051,6 +2051,42 @@ def remover_usuario(user_id):
     flash("Usuário removido com sucesso.", "success")
     return redirect(url_for("gerenciar_usuarios"))
 
+# ===================== Inventário =====================
+
+@app.route("/inventario", methods=["GET", "POST"])
+def inventario():
+    # Caminho onde vamos salvar o arquivo no servidor
+    caminho_arquivo = "glpi_base.csv"
+
+    # Se alguém enviou um arquivo (POST do computador)
+    if request.method == "POST":
+        arquivo = request.files.get("arquivoGLPI")
+        if arquivo and arquivo.filename.endswith('.csv'):
+            arquivo.save(caminho_arquivo)
+            flash("Base do GLPI atualizada com sucesso no servidor!", "success")
+        else:
+            flash("Por favor, envie um arquivo .csv válido.", "error")
+        return redirect(url_for("inventario"))
+
+    # Quando a página carrega (GET do celular ou PC)
+    # Verifica se a base já existe no servidor
+    tem_base = os.path.exists(caminho_arquivo)
+    data_base = ""
+    if tem_base:
+        # Pega a data de modificação do arquivo para avisar na tela
+        timestamp = os.path.getmtime(caminho_arquivo)
+        data_base = datetime.fromtimestamp(timestamp).strftime('%d/%m/%Y às %H:%M')
+
+    return render_template("inventario.html", tem_base=tem_base, data_base=data_base)
+
+
+# Rota invisível para o celular (Javascript) baixar o CSV por trás dos panos
+@app.route("/api/glpi_csv")
+def api_glpi_csv():
+    if os.path.exists("glpi_base.csv"):
+        return send_file("glpi_base.csv", mimetype="text/csv")
+    return "Arquivo não encontrado", 404
+
 # ===================== REMANEJAMENTOS =====================
 
 @app.route("/remanejamentos", methods=["GET", "POST"])

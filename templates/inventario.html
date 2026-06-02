@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Auditoria de Inventário</h2>
+
+<div class="form-layout">
+  
+  <div class="form-card">
+    <div class="form-header">
+      <p>A auditoria usa a base do GLPI hospedada no servidor. Pelo celular, basta selecionar o setor.</p>
+    </div>
+
+    <form method="POST" enctype="multipart/form-data" style="margin-bottom: 25px; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #e0e4e8;">
+        <label for="arquivoGLPI" style="color: #2c3e50;"><i class="fas fa-upload"></i> 1. Carga da Base (Faça pelo PC)</label>
+        <div style="display: flex; gap: 10px;">
+            <input type="file" name="arquivoGLPI" id="arquivoGLPI" accept=".csv" required style="margin-bottom: 0;">
+            <button type="submit" class="btn-primary" style="width: auto; padding: 0 20px;">Enviar CSV</button>
+        </div>
+        
+        {% if tem_base %}
+            <small style="color: #2ecc71; font-weight: bold; margin-top: 10px; display: block;">
+                <i class="fas fa-check-circle"></i> Base disponível no servidor! (Atualizada em: {{ data_base }})
+            </small>
+        {% else %}
+            <small style="color: #e74c3c; font-weight: bold; margin-top: 10px; display: block;">
+                <i class="fas fa-exclamation-triangle"></i> Nenhuma base carregada. Envie o arquivo primeiro.
+            </small>
+        {% endif %}
+    </form>
+
+    <label for="colaborador_setor"><i class="fas fa-map-marker-alt"></i> 2. Selecione o Setor da sua Auditoria</label>
+    <select id="colaborador_setor" name="colaborador_setor" disabled>
+      {% if tem_base %}
+        <option value="">Carregando dados do servidor...</option>
+      {% else %}
+        <option value="">Aguardando arquivo CSV...</option>
+      {% endif %}
+      <option value="Comunicação">Comunicação</option>
+      <option value="DAF - Assessoria">DAF - Assessoria</option>
+      <option value="DAF - CACC">DAF - CACC</option>
+      <option value="DAF - CTPF">DAF - CTPF</option>
+      <option value="DEA">DEA</option>
+      <option value="DGOVI">DGOVI</option>
+      <option value="DGP">DGP</option>
+      <option value="DJUR">DJUR</option>
+      <option value="DOP">DOP</option>
+      <option value="Integridade">Integridade (NIN)</option>
+      <option value="Manutenção">Manutenção</option>
+      <option value="NAE">NAE</option>
+      <option value="Ouvidoria">Ouvidoria</option>
+      <option value="Presidência">Presidência</option>
+    </select>
+
+    <div style="border-top: 1px solid #eee; padding-top: 20px; margin-top: 20px;">
+      <h3 style="margin-bottom: 15px; font-size: 1.1rem; color: #333;">Progresso da Leitura</h3>
+      
+      <div style="display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 5px; color: #555;">
+          <span>Auditados: <span id="qtdAuditados" style="color: #2ecc71;">0</span> / <span id="qtdTotal">0</span></span>
+          <span id="porcentagem">0%</span>
+      </div>
+      <div style="background-color: #e9ecef; border-radius: 4px; height: 20px; width: 100%; margin-bottom: 20px; overflow: hidden;">
+          <div id="barraProgresso" style="background-color: #2ecc71; width: 0%; height: 100%; transition: width 0.4s ease;"></div>
+      </div>
+
+      <div style="display: flex; gap: 10px; text-align: center; margin-bottom: 20px;">
+          <div style="flex: 1; padding: 15px; background: #fff3f3; border: 1px solid #ffcdd2; border-radius: 6px;">
+              <h4 style="margin: 0; color: #c0392b; font-size: 0.9rem; text-transform: uppercase;">Divergentes</h4>
+              <h2 style="margin: 5px 0 0; color: #c0392b;" id="qtdDivergentes">0</h2>
+          </div>
+          <div style="flex: 1; padding: 15px; background: #fff8e1; border: 1px solid #ffecb3; border-radius: 6px;">
+              <h4 style="margin: 0; color: #d35400; font-size: 0.9rem; text-transform: uppercase;">Pendentes</h4>
+              <h2 style="margin: 5px 0 0; color: #d35400;" id="qtdPendentes">0</h2>
+          </div>
+      </div>
+
+      <button id="btnExportar" class="btn-primary" style="width: 100%; background-color: #2c3e50; border-color: #2c3e50;" type="button" disabled>
+        <i class="fas fa-file-export"></i> Baixar Relatório Deste Setor
+      </button>
+    </div>
+  </div>
+
+  <div class="form-side-info" style="flex: 1.5;">
+    <div class="info-card">
+      <h3 style="border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">3. Leitura de Equipamentos</h3>
+      
+      <div id="reader" style="width: 100%; border-radius: 6px; overflow: hidden; margin-bottom: 15px; display: none; border: 2px solid #3498db;"></div>
+      
+      <button id="btnIniciarCamera" class="btn-primary" style="width: 100%; margin-bottom: 10px;" type="button" disabled>
+        <i class="fas fa-camera"></i> Iniciar Leitura por Câmera
+      </button>
+      <button id="btnPararCamera" class="btn-primary" style="width: 100%; margin-bottom: 10px; background-color: #e74c3c; border-color: #e74c3c; display: none;" type="button">
+        <i class="fas fa-stop"></i> Parar Câmera
+      </button>
+
+      <label for="leituraManual" style="margin-top: 15px;">Leitura Manual (Serial)</label>
+      <div style="display: flex; gap: 10px; margin-bottom: 25px;">
+          <input type="text" id="leituraManual" style="margin-bottom: 0;" placeholder="Digite o serial..." disabled />
+          <button id="btnManual" class="btn-primary" type="button" style="width: auto; padding: 0 20px;" disabled>OK</button>
+      </div>
+
+      <div style="display: flex; border-bottom: 2px solid #eee; margin-bottom: 15px;">
+        <button onclick="alternarAba('esperados')" id="tab-esperados" style="flex: 1; background: none; border: none; border-bottom: 3px solid #3498db; padding: 10px; font-weight: bold; color: #3498db; cursor: pointer; transition: 0.3s;">
+            Lista Esperada (<span id="countEsperadosTab">0</span>)
+        </button>
+        <button onclick="alternarAba('divergentes')" id="tab-divergentes" style="flex: 1; background: none; border: none; border-bottom: 3px solid transparent; padding: 10px; font-weight: bold; color: #7f8c8d; cursor: pointer; transition: 0.3s;">
+            Divergências (<span id="countDivergentesTab">0</span>)
+        </button>
+      </div>
+
+      <div id="view-esperados" style="max-height: 500px; overflow-y: auto;">
+         <ul id="listaEsperados" style="list-style: none; padding: 0; margin: 0;">
+             <div style="text-align: center; padding: 30px 10px; color: #999;">
+                 Aguardando seleção do setor...
+             </div>
+         </ul>
+      </div>
+
+      <div id="view-divergentes" style="display: none; max-height: 500px; overflow-y: auto;">
+         <ul id="listaDivergentes" style="list-style: none; padding: 0; margin: 0;">
+             <div id="msgSemDivergencia" style="text-align: center; padding: 30px 10px; color: #999;">
+                 <i class="fas fa-check-circle" style="font-size: 2rem; color: #2ecc71; margin-bottom: 10px; display: block;"></i>
+                 Nenhuma divergência encontrada.
+             </div>
+         </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+<script>
+    let bancoGLPI = [];
+    let setorAtual = [];
+    let divergencias = [];
+
+    // --- AUTO-CARREGAMENTO DA BASE DO SERVIDOR ---
+    {% if tem_base %}
+        // Se Python avisar que tem base, o JS faz o download invisível dela
+        Papa.parse("{{ url_for('api_glpi_csv') }}?t=" + new Date().getTime(), {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            complete: function(results) {
+                bancoGLPI = results.data.map(row => {
+                    return {
+                        nome: row['Nome'] || 'N/A',
+                        serial: (row['Número de série'] || row['Numero de serie'] || '').trim(),
+                        modelo: row['Modelo'] || 'N/A',
+                        localizacao: row['Localização'] || row['Localizacao'] || '',
+                        status_glpi: row['Status'] || '',
+                        auditado: false
+                    };
+                }).filter(item => item.serial !== '');
+
+                let selectSetor = document.getElementById('colaborador_setor');
+                selectSetor.disabled = false;
+                selectSetor.options[0].text = "Selecione o setor para iniciar...";
+                console.log("Base carregada do servidor com " + bancoGLPI.length + " itens.");
+            }
+        });
+    {% endif %}
+
+    // --- FILTRO POR SETOR ---
+    document.getElementById('colaborador_setor').addEventListener('change', function(e) {
+        const setorFiltro = e.target.value.toUpperCase();
+        if (!setorFiltro) return;
+
+        setorAtual = bancoGLPI.filter(item => item.localizacao.toUpperCase().includes(setorFiltro));
+        divergencias = [];
+
+        document.getElementById('btnIniciarCamera').disabled = false;
+        document.getElementById('btnExportar').disabled = false;
+        document.getElementById('leituraManual').disabled = false;
+        document.getElementById('btnManual').disabled = false;
+
+        renderizarListas();
+    });
+
+    // --- RENDERIZAÇÃO DA TELA ---
+    function renderizarListas() {
+        const ulEsperados = document.getElementById('listaEsperados');
+        ulEsperados.innerHTML = '';
+
+        if(setorAtual.length === 0) {
+            ulEsperados.innerHTML = `<div style="text-align: center; padding: 30px; color: #e74c3c; font-weight:bold;">Nenhum equipamento cadastrado neste setor no GLPI.</div>`;
+        }
+
+        setorAtual.forEach(item => {
+            let li = document.createElement('li');
+            li.id = 'item-' + item.serial;
+            
+            li.style.cssText = 'padding: 12px; border: 1px solid #e0e0e0; margin-bottom: 8px; border-radius: 6px; border-left: 4px solid #f39c12; display: flex; justify-content: space-between; align-items: center; background: #fafafa;';
+            li.innerHTML = `<div><strong style="display: block; color: #333;">${item.modelo}</strong><span style="font-size: 0.85em; color: #777;">Serial: ${item.serial} | ${item.nome}</span></div><span style="background: #f39c12; color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold;">Aguardando</span>`;
+            
+            ulEsperados.appendChild(li);
+        });
+
+        atualizarProgresso();
+    }
+
+    // --- MOTOR DE AUDITORIA ---
+    function processarLeitura(serialLido) {
+        if(!serialLido) return;
+        serialLido = serialLido.toUpperCase();
+        document.getElementById('leituraManual').value = ''; 
+
+        let indexNoSetor = setorAtual.findIndex(i => i.serial.toUpperCase() === serialLido);
+
+        if (indexNoSetor !== -1) {
+            // SUCESSO
+            setorAtual[indexNoSetor].auditado = true;
+            
+            // Atualiza visualmente
+            let li = document.getElementById('item-' + serialLido);
+            li.style.borderLeft = "4px solid #2ecc71";
+            li.style.backgroundColor = "#f4fbf5";
+            let span = li.querySelector('span:last-child');
+            span.style.backgroundColor = "#2ecc71";
+            span.innerText = "Auditado";
+            
+        } else {
+            // DIVERGÊNCIA
+            let itemGlobal = bancoGLPI.find(i => i.serial.toUpperCase() === serialLido);
+            let motivo = itemGlobal ? `Deveria estar em: ${itemGlobal.localizacao}` : "Não cadastrado no GLPI";
+            
+            registrarDivergencia(serialLido, motivo, itemGlobal);
+            alternarAba('divergentes');
+        }
+        atualizarProgresso();
+    }
+
+    function registrarDivergencia(serial, motivo, dadosItem) {
+        if(divergencias.find(d => d.serial === serial)) return;
+
+        let nomeExibicao = dadosItem ? dadosItem.modelo : "Equipamento Desconhecido";
+        divergencias.push({ serial: serial, modelo: nomeExibicao, motivo: motivo, nome_glpi: dadosItem ? dadosItem.nome : 'N/A' });
+
+        document.getElementById('msgSemDivergencia').style.display = 'none';
+        
+        let ul = document.getElementById('listaDivergentes');
+        let li = document.createElement('li');
+        li.style.cssText = 'padding: 12px; border: 1px solid #ffcdd2; margin-bottom: 8px; border-radius: 6px; border-left: 4px solid #e74c3c; display: flex; justify-content: space-between; align-items: center; background: #fff5f5;';
+        li.innerHTML = `
+            <div><strong style="display: block; color: #c0392b;">${nomeExibicao}</strong>
+            <span style="font-size: 0.85em; color: #777;">Serial: ${serial} <br> <b style="color:#c0392b;">Erro:</b> ${motivo}</span></div>
+            <span style="background: #e74c3c; color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 0.75em; font-weight: bold;">Divergente</span>
+        `;
+        ul.appendChild(li);
+    }
+
+    // --- EXPORTAÇÃO ---
+    document.getElementById('btnExportar').addEventListener('click', function() {
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Nome GLPI,Serial,Modelo,Localizacao GLPI,Status Auditoria,Detalhe Divergencia\n";
+
+        setorAtual.forEach(item => {
+            let status = item.auditado ? "AUDITADO OK" : "FALTOU NO LOCAL";
+            csvContent += `"${item.nome}","${item.serial}","${item.modelo}","${item.localizacao}","${status}",""\n`;
+        });
+
+        divergencias.forEach(item => {
+            csvContent += `"${item.nome_glpi}","${item.serial}","${item.modelo}","","DIVERGENTE LIDO NO LOCAL","${item.motivo}"\n`;
+        });
+
+        const nomeSetor = document.getElementById('colaborador_setor').value;
+        const dataHoje = new Date().toISOString().split('T')[0];
+        var encodedUri = encodeURI(csvContent);
+        var link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `Auditoria_${nomeSetor}_${dataHoje}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+
+    // --- UTILIDADES ---
+    document.getElementById('btnManual').addEventListener('click', () => processarLeitura(document.getElementById('leituraManual').value));
+    document.getElementById('leituraManual').addEventListener('keypress', function (e) { if (e.key === 'Enter') processarLeitura(this.value); });
+
+    function atualizarProgresso() {
+        let total = setorAtual.length;
+        let auditados = setorAtual.filter(i => i.auditado).length;
+        let pendentes = total - auditados;
+        let divergentesCount = divergencias.length;
+
+        document.getElementById('qtdTotal').innerText = total;
+        document.getElementById('qtdAuditados').innerText = auditados;
+        document.getElementById('qtdPendentes').innerText = pendentes;
+        document.getElementById('qtdDivergentes').innerText = divergentesCount;
+        document.getElementById('countEsperadosTab').innerText = total;
+        document.getElementById('countDivergentesTab').innerText = divergentesCount;
+
+        let pct = total > 0 ? Math.round((auditados / total) * 100) : 0;
+        document.getElementById('porcentagem').innerText = pct + '%';
+        document.getElementById('barraProgresso').style.width = pct + '%';
+    }
+
+    function alternarAba(aba) {
+        if (aba === 'esperados') {
+            document.getElementById('view-esperados').style.display = 'block';
+            document.getElementById('view-divergentes').style.display = 'none';
+            document.getElementById('tab-esperados').style.cssText = 'flex: 1; background: none; border: none; border-bottom: 3px solid #3498db; padding: 10px; font-weight: bold; color: #3498db; cursor: pointer;';
+            document.getElementById('tab-divergentes').style.cssText = 'flex: 1; background: none; border: none; border-bottom: 3px solid transparent; padding: 10px; font-weight: bold; color: #7f8c8d; cursor: pointer;';
+        } else {
+            document.getElementById('view-esperados').style.display = 'none';
+            document.getElementById('view-divergentes').style.display = 'block';
+            document.getElementById('tab-divergentes').style.cssText = 'flex: 1; background: none; border: none; border-bottom: 3px solid #e74c3c; padding: 10px; font-weight: bold; color: #e74c3c; cursor: pointer;';
+            document.getElementById('tab-esperados').style.cssText = 'flex: 1; background: none; border: none; border-bottom: 3px solid transparent; padding: 10px; font-weight: bold; color: #7f8c8d; cursor: pointer;';
+        }
+    }
+
+    let html5QrcodeScanner = null;
+    document.getElementById('btnIniciarCamera').addEventListener('click', function() {
+        document.getElementById('reader').style.display = 'block';
+        this.style.display = 'none';
+        document.getElementById('btnPararCamera').style.display = 'block';
+
+        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 150} });
+        html5QrcodeScanner.render((decodedText) => {
+            processarLeitura(decodedText.trim());
+            html5QrcodeScanner.pause(true);
+            setTimeout(() => html5QrcodeScanner.resume(), 1500);
+        }, (error) => {});
+    });
+
+    document.getElementById('btnPararCamera').addEventListener('click', function() {
+        if (html5QrcodeScanner) html5QrcodeScanner.clear();
+        document.getElementById('reader').style.display = 'none';
+        this.style.display = 'none';
+        document.getElementById('btnIniciarCamera').style.display = 'block';
+    });
+</script>
+{% endblock %}
