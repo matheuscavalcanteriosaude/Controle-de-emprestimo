@@ -58,13 +58,20 @@
           <span class="nav-icon">📅</span> Agendamentos
         </a>
         <a href="{{ url_for('emprestimo') }}" class="nav-link {% if request.endpoint == 'emprestimo' %}is-active{% endif %}">
-          <span class="nav-icon">💻</span> Novo Empréstimo
+          <span class="nav-icon">🔄</span> Novo Empréstimo
         </a>
 
         <!-- VISÍVEL APENAS PARA ADMIN, SUPERVISOR E TÉCNICO -->
         {% if session.get('user_role') in ['admin', 'supervisor', 'tecnico'] %}
         <a href="{{ url_for('novo_notebook') }}" class="nav-link {% if request.endpoint == 'novo_notebook' %}is-active{% endif %}">
-          <span class="nav-icon">📦</span> Notebooks
+          <span class="nav-icon">💻</span> Notebooks
+        </a>
+        {% endif %}
+
+                <!-- VISÍVEL APENAS PARA ADMIN, SUPERVISOR E TÉCNICO -->
+        {% if session.get('user_role') in ['admin', 'supervisor', 'tecnico'] %}
+        <a href="{{ url_for('inventario') }}" class="nav-link {% if request.endpoint == 'inventario' %}is-active{% endif %}">
+          <span class="nav-icon">📦</span> Inventário
         </a>
         {% endif %}
 
@@ -79,7 +86,7 @@
         <!-- VISÍVEL APENAS PARA ADMIN, SUPERVISOR E TÉCNICO -->
         {% if session.get('user_role') in ['admin', 'supervisor', 'tecnico'] %}
         <a href="{{ url_for('remanejamentos') }}" class="nav-link {% if request.endpoint == 'remanejamentos' %}is-active{% endif %}">
-          <span class="nav-icon">📑</span> Remanejamentos
+          <span class="nav-icon">🚧</span> Remanejamentos
         </a>
         {% endif %}
 
